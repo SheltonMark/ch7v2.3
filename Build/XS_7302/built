@@ -1,0 +1,6 @@
+#!/bin/sh 
+
+echo "this is XS7302"
+make clean	cpu=XS7302;make cpu=XS7302
+
+

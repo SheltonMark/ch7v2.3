@@ -1,0 +1,39 @@
+# SVN directories
+.svn/
+**/.svn/
+
+# Build outputs
+*.o
+*.so
+*.a
+*.lo
+*.la
+*.d
+*.ko
+*.mod.c
+
+# Build directories
+Build/*/lib/
+Build/*/obj/
+Build/*/*.so
+Build/*/*.a
+
+# Editor and IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.code-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+*.log
+
+# Core dumps and debug files
+core
+!Src/video/core/
+*.core
+vgcore.*

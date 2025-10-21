@@ -1,0 +1,6 @@
+#!/bin/sh 
+
+echo "this is AX520CE"
+make clean	cpu=AX520CE;make cpu=AX520CE
+
+
