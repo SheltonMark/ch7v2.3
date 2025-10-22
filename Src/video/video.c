@@ -1558,304 +1558,6 @@ int _video_set_vps_in_frame_rate(int channel, unsigned int FrmRate)
 	return ret;
 }
 
-/// 设置编码的帧率
-///	仅限降帧使用
-/// \param [in] channel 通道号。
-/// \param [in] dwType
-/// \param [in] pFormat 指向捕获格式结构CAPTURE_FORMAT的指针。
-/// \retval 0  设置成功
-/// \retval 0  设置失败
-int _video_set_venc_param(int channel, DWORD dwType, channel_info *info)
-{
-	int EncCnt = 0;
-	int ret = FALSE;
-	int jpeg_fps = 4;				//设置抓图通道的帧率为4
-	unsigned int VencChn = 0;
-	unsigned int MaxBitRate = 0;
-	BOOL VencVhnDestroy = FALSE;
-	VENC_CHN_ATTR_S VENC_ChnAttr;
-	int jpeg_chn = STREAM_TYPE_THI; // 抓图为第三通道
-	SensorDevice_p pSensorDevice = &GlobalDevice.SensorDevice;
-	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
-
-	memset(&VENC_ChnAttr,0,sizeof(VENC_CHN_ATTR_S));
-
-	EncCnt = pCaptureDevice->EncCount;
-
-	if (NULL == info || channel >= EncCnt)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("channel %d parameter error\n", channel);
-		return ret;
-	}
-
-	if (0 == info->frame_count)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("channel %d parameter FramesPerSecond %d error\n", channel, info->frame_count);
-		return ret;
-	}
-
-	// 校验支持的码流的通道，上层传递通道方式为掩码
-	if (!((pCaptureDevice->EncDevice[channel].SupportStream >> dwType) & 0x01))
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("not support dwType = %d\n", dwType);
-		return ret;
-	}
-
-	// 获取编码通道号
-	for (int i = 0; i < pCaptureDevice->EncDevice[channel].StreamCount; i++)
-	{
-		if (dwType == pCaptureDevice->EncDevice[channel].StreamDevice[i].CapChn)
-		{
-			VencChn = i;
-		}
-	}
-
-	ret = NI_MDK_VENC_GetChnAttr(VencChn, &VENC_ChnAttr);
-	if (ret != RETURN_OK)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_GetChnAttr\n", ret, ret);
-		return -1;
-	}
-
-	//仅当编码类型和编码等级发生修改时，需要销毁编码通道，其他情况均不销毁
-	if (VENC_ChnAttr.stVeAttr.enType != info->enc_type || VENC_ChnAttr.stVeAttr.enProfile != info->profile)
-	{
-		ret = NI_MDK_VENC_DestroyChn(VencChn);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_DestroyChn\n", ret, ret);
-			return -1;
-		}
-
-		//关闭码流校验功能
-		ret = NI_MDK_VENC_SetStreamCheck(VencChn, VENC_STREAM_CHECK_OFF);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_SetStreamCheck\n", ret, ret);
-			return -1;
-		}
-
-		// 设置编码通道的buff大小，仅在销毁重建时才能修改
-		//这边直接将编码通道的buff大小设置为最大，可以规避小分辨率切换到大分辨率需要销毁重建的问题
-		if (STREAM_TYPE_SEC == VencChn)
-		{
-			VENC_ChnAttr.stVeAttr.u32StrmBufSize = 245761;
-		}
-		else
-		{
-			VENC_ChnAttr.stVeAttr.u32StrmBufSize = pSensorDevice->MaxHeight * pSensorDevice->MaxWidth / 2;
-		}
-
-		VencVhnDestroy = TRUE;
-	}
-
-
-	VENC_ChnAttr.stVeAttr.enType = info->enc_type;
-	VENC_ChnAttr.stVeAttr.enProfile = info->profile;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicWidth = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicHeight = info->height;
-	VENC_ChnAttr.stRcAttr.enRcMode = info->rc_type;
-	// 这边判断下sensor帧率和用户配置帧率的大小
-	// 若sensor帧率大于用户配置帧率，则以用户配置帧率为准
-	// 若sensor帧率小于用户配置帧率，则以sensor帧率为准
-	VENC_ChnAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
-
-	VENC_ChnAttr.stGopAttr.stGopNomalAttr.u32Gop = MAX(VENC_ChnAttr.stRcAttr.u32FrmRateNum, 1) * 2;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[0] = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[1] = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
-	MaxBitRate = VENC_ChnAttr.stRcAttr.u32FrmRateNum / VENC_ChnAttr.stRcAttr.u32FrmRateDenom * info->width * info->height * 8 * 3 / 2000;
-
-	switch (VENC_ChnAttr.stRcAttr.enRcMode)
-	{
-		case (VENC_RC_MODE_CBR):
-			//此处将统计时间设置为10，为A-CBR模式，可以改善画面较为复杂情况下的画质
-			VENC_ChnAttr.stRcAttr.stAttrCbr.u32StatTime = 1;
-			VENC_ChnAttr.stRcAttr.stAttrCbr.u32TargetBitRate = MIN(info->bps, MaxBitRate);
-			//获取主子码流的QP值
-			if (VencChn == CHL_MAIN_T)
-			{
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MinIQp = CaptureQtTable[info->qt_level - 1].IminQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MaxIQp = CaptureQtTable[info->qt_level - 1].ImaxQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MinPQp = CaptureQtTable[info->qt_level - 1].PminQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MaxPQp = CaptureQtTable[info->qt_level - 1].PmaxQP;
-			}
-			else if (VencChn == CHL_2END_T)
-			{
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MinIQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].IminQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MaxIQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].ImaxQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MinPQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].PminQP;
-				VENC_ChnAttr.stRcAttr.stAttrCbr.u32MaxPQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].PmaxQP;
-			}
-			break;
-		case (VENC_RC_MODE_QVBR):
-			// 此处必须设置统计时间为9，为Q-VBR模式，为了降低静止场景下的码率
-			VENC_ChnAttr.stRcAttr.stAttrQVbr.u32StatTime = 1;
-			VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MaxBitRate = MIN(info->bps, MaxBitRate);
-			VENC_ChnAttr.stRcAttr.stAttrQVbr.s32ChangePos = 85;
-			//获取主子码流的QP值
-			if (VencChn == CHL_MAIN_T)
-			{
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MinIQp = CaptureQtTable[info->qt_level - 1].IminQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MaxIQp = CaptureQtTable[info->qt_level - 1].ImaxQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MinPQp = CaptureQtTable[info->qt_level - 1].PminQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MaxPQp = CaptureQtTable[info->qt_level - 1].PmaxQP;
-			}
-			else if (VencChn == CHL_2END_T)
-			{
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MinIQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].IminQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MaxIQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].ImaxQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MinPQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].PminQP;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.u32MaxPQp = CHL_2END_T_CaptureQtTable[info->qt_level - 1].PmaxQP;
-			}
-			VENC_ChnAttr.stRcAttr.stAttrQVbr.s32MinBitratePos 		= 32;
-			if (PT_H265 == VENC_ChnAttr.stVeAttr.enType)
-			{
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.s32BestQuality  = 50;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.s32WorstQuality = 60;
-			}
-			else
-			{
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.s32BestQuality 	= 60;
-				VENC_ChnAttr.stRcAttr.stAttrQVbr.s32WorstQuality 	= 70;
-			}
-			break;
-		default:
-			PRINT_ERROR("unknown enRcMode %d\n", VENC_ChnAttr.stRcAttr.enRcMode);
-			return -1;
-	}
-
-	//根据码流是否被销毁来创建/设置编码通道
-	if(TRUE == VencVhnDestroy)
-	{
-		ret = NI_MDK_VENC_CreateChn(VencChn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): channel: %d NI_MDK_VENC_CreateChn\n", ret, ret, VencChn);
-			_venc_error(&VENC_ChnAttr);
-			return -1;
-		}
-	}
-	else
-	{
-		ret = NI_MDK_VENC_SetChnAttr(VencChn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_SetChnAttr\n", ret, ret);
-			return -1;
-		}
-	}
-
-	//当分辨率发生改变时，OSD和LOGO被销毁了，在这边重新创建
-	if (info->width != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width ||
-		info->height != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height)
-	{
-		//这边先保存分辨率配置，设置OSD、LOGO、隐私遮蔽需要使用该参数
-		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width = info->width;
-		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height = info->height;
-
-		_set_title();
-		_set_cover();
-		_set_logo();
-	}
-
-
-	if (STREAM_TYPE_FIR == VencChn)
-	{
-		VENC_RC_PARAM_S stRcParam;
-		memset(&stRcParam, 0, sizeof(VENC_RC_PARAM_S));
-
-		ret = NI_MDK_VENC_GetRcParam(VencChn, &stRcParam);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_GetRcParam\n", ret, ret);
-			return ret;
-		}
-
-		stRcParam.stRcParamH26x.s32MaxISize = 512 * 1024;
-
-		ret = NI_MDK_VENC_SetRcParam(VencChn, &stRcParam);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_SetRcParam\n", ret, ret);
-			return ret;
-		}
-
-		PRINT_INFO("set main stream max I frame size 512KB\n");
-	}
-
-	//保存配置
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.bps = info->bps;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.rc_type = info->rc_type;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.profile = info->profile;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.qt_level = info->qt_level;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.enc_type = info->enc_type;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.frame_count = info->frame_count;
-
-	//由于抓图通道与子码流YUV通道绑定，所以需要跟随子码流分辨率调整分辨率
-	if (CHL_2END_T == VencChn)
-	{
-		ret = NI_MDK_VENC_StopRecvPic(jpeg_chn);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_GetChnAttr\n", ret, ret);
-			return ret;
-		}
-		// 抓图通道设置参数与子码流一致
-		ret = NI_MDK_VENC_GetChnAttr(jpeg_chn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_GetChnAttr\n", ret, ret);
-			return ret;
-		}
-		//设置抓图通道的输入帧率
-		VENC_ChnAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicWidth = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicHeight = info->height;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[0] = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[1] = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
-
-		ret = NI_MDK_VENC_SetChnAttr(jpeg_chn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_SetChnAttr\n", ret, ret);
-			return ret;
-		}
-
-		//当子码流帧率小于抓图通道帧率时，以子码流帧率为准
-		jpeg_fps = (jpeg_fps > info->frame_count) ? info->frame_count : jpeg_fps;
-
-		//设置抓图通道的输出帧率
-		ret = NI_MDK_VENC_SetOutFrmRate(jpeg_chn, jpeg_fps);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): channel: %d NI_MDK_VENC_SetOutFrmRate\n", ret, ret, VencChn);
-			return -1;
-		}
-
-		ret = NI_MDK_VENC_StartRecvPic(jpeg_chn);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): NI_MDK_VENC_StartRecvPic\n", ret, ret);
-			return ret;
-		}
-
-		pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_width = info->width;
-		pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_height = info->height;
-	}
-
-	return ret;
-}
-
 /// 编码自适应线程
 ///	用于维护用户编码参数修改以及夜晚降帧策略
 /// 该线程仅在升级时销毁
@@ -1896,14 +1598,14 @@ void *_venc_adaptive_process()
 					break;
 				}
 
-				ret = NI_MDK_VENC_StopRecvPic(ichannel);
+				ret = VideoEncoder_Stop(ichannel);
 				if (ret != RETURN_OK)
 				{
-					PRINT_ERROR("Error(%x): NI_MDK_VENC_StopRecvPic chn(%d)!\n", ret, ichannel);
-					ret = NI_MDK_VENC_StartRecvPic(ichannel);
+					PRINT_ERROR("Error(%x): VideoEncoder_Stop chn(%d)!\n", ret, ichannel);
+					ret = VideoEncoder_Start(ichannel);
 					if (ret != RETURN_OK)
 					{
-						PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+						PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					}
 					continue;
 				}
@@ -1921,10 +1623,10 @@ void *_venc_adaptive_process()
 				if (ret != RETURN_OK)
 				{
 					PRINT_ERROR("Error(%x): _video_set_vps_in_frame_rate!\n", ret);
-					ret = NI_MDK_VENC_StartRecvPic(ichannel);
+					ret = VideoEncoder_Start(ichannel);
 					if (ret != RETURN_OK)
 					{
-						PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+						PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					}
 					continue;
 				}
@@ -1947,22 +1649,22 @@ void *_venc_adaptive_process()
 				PRINT_INFO("ichannel %d, info.height %d\n",  ichannel,info.height);
 				PRINT_INFO("ichannel %d, info.qt_level%d\n",  ichannel,info.qt_level);
 				PRINT_INFO("ichannel %d, info.frame_count %d\n", ichannel, info.frame_count);
-				ret = _video_set_venc_param(channel, ichannel, &info);
+				ret = VideoEncoder_UpdateChannelConfig(channel, ichannel, &info);
 				if (ret != RETURN_OK)
 				{
 					PRINT_ERROR("Error(%x): _video_set_vps_in_frame_rate!\n", ret);
-					ret = NI_MDK_VENC_StartRecvPic(ichannel);
+					ret = VideoEncoder_Start(ichannel);
 					if (ret != RETURN_OK)
 					{
-						PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+						PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					}
 					continue;
 				}
 
-				ret = NI_MDK_VENC_StartRecvPic(ichannel);
+				ret = VideoEncoder_Start(ichannel);
 				if (ret != RETURN_OK)
 				{
-					PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+					PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					continue;
 				}
 			}
@@ -1992,10 +1694,10 @@ void *_venc_adaptive_process()
 				PRINT_INFO("ichannel %d, info.height %d\n", ichannel,info.height);
 				PRINT_INFO("ichannel %d, info.qt_level%d\n",ichannel, info.qt_level);
 				PRINT_INFO("ichannel %d, info.frame_count %d\n", ichannel, info.frame_count);
-				ret = NI_MDK_VENC_StopRecvPic(ichannel);
+				ret = VideoEncoder_Stop(ichannel);
 				if (ret != RETURN_OK)
 				{
-					PRINT_ERROR("Error(%x): NI_MDK_VENC_StopRecvPic chn(%d)!\n", ret, ichannel);
+					PRINT_ERROR("Error(%x): VideoEncoder_Stop chn(%d)!\n", ret, ichannel);
 					continue;
 				}
 
@@ -2007,30 +1709,30 @@ void *_venc_adaptive_process()
 				if (ret != RETURN_OK)
 				{
 					PRINT_ERROR("Error(%x): _video_set_vps_out_param!\n", ret);
-					ret = NI_MDK_VENC_StartRecvPic(ichannel);
+					ret = VideoEncoder_Start(ichannel);
 					if (ret != RETURN_OK)
 					{
-						PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+						PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					}
 					continue;
 				}
 				
-				ret = _video_set_venc_param(channel, ichannel, &info);
+				ret = VideoEncoder_UpdateChannelConfig(channel, ichannel, &info);
 				if (ret != RETURN_OK)
 				{
-					PRINT_ERROR("Error(%x): _video_set_venc_param!\n", ret);
-					ret = NI_MDK_VENC_StartRecvPic(ichannel);
+					PRINT_ERROR("Error(%x): VideoEncoder_UpdateChannelConfig!\n", ret);
+					ret = VideoEncoder_Start(ichannel);
 					if (ret != RETURN_OK)
 					{
-						PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+						PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					}
 					continue;
 				}
 
-				ret = NI_MDK_VENC_StartRecvPic(ichannel);
+				ret = VideoEncoder_Start(ichannel);
 				if (ret != RETURN_OK)
 				{
-					PRINT_ERROR("Error(%x): NI_MDK_VENC_StartRecvPic chn(%d)!\n", ret, ichannel);
+					PRINT_ERROR("Error(%x): VideoEncoder_Start chn(%d)!\n", ret, ichannel);
 					continue;
 				}
 			}

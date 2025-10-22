@@ -22,6 +22,13 @@ extern "C" {
 #include "mdk_venc.h"
 #include "ni_comm_venc.h"
 
+
+/* Forward declarations - avoid circular dependencies */
+#ifndef DWORD
+typedef unsigned int DWORD;
+#endif
+typedef struct channel_info channel_info;
+
 /* ========================================================================== */
 /*                           宏和类型定义区                                   */
 /* ========================================================================== */
@@ -120,12 +127,22 @@ int VideoEncoder_SetGOP(int VencChn, int gop);
 int VideoEncoder_SetRcMode(int VencChn, VENC_RC_MODE_E rcMode);
 
 /**
+ * @brief 设置编码类型（H264/H265）
+ * @param VencChn 编码通道号
+ * @param codecType 编码类型 (PT_H264/PT_H265)
+ * @param profile 编码等级
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ * @note 场景三：需要销毁重建通道 - Stop → Destroy → Create → Start
+ */
+int VideoEncoder_SetCodecType(int VencChn, PAYLOAD_TYPE_E codecType, VENC_PROFILE_E profile);
+
+/**
  * @brief 设置编码通道分辨率
  * @param VencChn 编码通道号
  * @param width 目标宽度
  * @param height 目标高度
  * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
- * @note 会先停止通道，修改参数后重启
+ * @note 场景四：需要VPS联动
  */
 int VideoEncoder_SetResolution(int VencChn, int width, int height);
 
@@ -161,12 +178,53 @@ int VideoEncoder_EnableIntraRefresh(int VencChn, int enable);
 int VideoEncoder_GetChannelAttr(int VencChn, VENC_CHN_ATTR_S* pAttr);
 
 /**
+ * @brief 设置编码通道属性
+ * @param VencChn 编码通道号
+ * @param pAttr 通道属性配置
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ * @note 通道必须先停止才能设置属性
+ */
+int VideoEncoder_SetChannelAttr(int VencChn, VENC_CHN_ATTR_S* pAttr);
+
+/**
  * @brief 获取编码流信息
  * @param VencChn 编码通道号
  * @param pStream 输出流信息
  * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
  */
 int VideoEncoder_GetStreamInfo(int VencChn, VENC_STREAM_S* pStream);
+
+/**
+ * @brief 设置码流校验模式
+ * @param VencChn 编码通道号
+ * @param checkMode 校验模式（VENC_STREAM_CHECK_ON/OFF）
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ */
+int VideoEncoder_SetStreamCheck(int VencChn, int checkMode);
+
+/**
+ * @brief 设置编码输出帧率
+ * @param VencChn 编码通道号
+ * @param frameRate 输出帧率
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ */
+int VideoEncoder_SetOutFrameRate(int VencChn, int frameRate);
+
+/**
+ * @brief 获取码率控制参数
+ * @param VencChn 编码通道号
+ * @param pRcParam 输出码率控制参数
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ */
+int VideoEncoder_GetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam);
+
+/**
+ * @brief 设置码率控制参数
+ * @param VencChn 编码通道号
+ * @param pRcParam 码率控制参数
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ */
+int VideoEncoder_SetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam);
 
 /*
  * ===== 旋转/镜像（特殊功能） =====
@@ -188,6 +246,21 @@ int VideoEncoder_SetRotate(int VencChn, int enRotation);
  * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
  */
 int VideoEncoder_SetMirror(int VencChn, int bMirror, int bFlip);
+/**
+ * @brief 更新编码通道的完整配置
+ * @param channel 视频输入通道 (0-based)
+ * @param dwType 码流类型 (CHL_MAIN_T/CHL_2END_T/CHL_JPEG_T)
+ * @param info 编码参数配置
+ * @return 0成功，-1失败
+ * 
+ * 功能：
+ * - 根据参数变化决定是否重建编码器
+ * - 更新编码器属性（分辨率、帧率、码率、QP等）
+ * - 触发OSD/LOGO重建（分辨率变化时）
+ * - 微调主码流RC参数
+ * - 同步JPEG通道（子码流变化时）
+ */
+int VideoEncoder_UpdateChannelConfig(int channel, DWORD dwType, channel_info *info);
 
 #ifdef __cplusplus
 }

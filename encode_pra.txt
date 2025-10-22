@@ -1,0 +1,37 @@
+切换码率 帧率 码控模式 编码类型 分辨率 sensor format等流程
+
+场景一：修改编码码率，帧率
+
+码率、 帧率是动态属性，可以动态修改，整体流程都不用动，只需要调用以下接口即可
+
+NI_MDK_VENC_GetChnAttr;
+
+NI_MDK_VENC_SetChnAttr;
+
+NI_MDK_VENC_SetOutFrmRate；
+
+ 
+
+场景二：修改码控模式cbr->vbr ，只需先停止接收图像设置新的码控模式再开始接收图像
+
+       NI_MDK_VENC_StopRecvPic-> NI_MDK_VENC_GetChnAttr -> NI_MDK_VENC_SetChnAttr(720p)-> NI_MDK_VENC_StartRecvPic
+
+ 
+
+场景三：修改编码类型h264->h265、h265->h264
+
+       NI_MDK_VENC_GetChnAttr ->NI_MDK_VENC_StopRecvPic -> NI_MDK_VENC_DestroyChn -> NI_MDK_VENC_CreateChn(赋值新的enType 和enProfile) -> NI_MDK_VENC_StartRecvPic
+
+ 
+
+场景四：修改分辨率（sensor采集的是1080p ,编码1080p->720p->1080p）   NI_MDK_VENC_StopRecvPic -> NI_MDK_VPS_DisableChn ->NI_MDK_VPS_GetChnAttr -> NI_MDK_VPS_SetChnAttr(720p) -> NI_MDK_VPS_EnableChn -> NI_MDK_VENC_GetChnAttr -> NI_MDK_VENC_SetChnAttr(720p)-> NI_MDK_VENC_StartRecvPic
+
+ 
+
+       NI_MDK_VENC_StopRecvPic -> NI_MDK_VPS_DisableChn ->NI_MDK_VPS_GetChnAttr -> NI_MDK_VPS_SetChnAttr(1080p) -> NI_MDK_VPS_EnableChn -> NI_MDK_VENC_GetChnAttr -> NI_MDK_VENC_SetChnAttr(1080p)-> NI_MDK_VENC_StartRecvPic
+
+ 
+
+场景五：修改sensor制式 1080p@30fps->1080p@25fps->1080p@30fps
+
+       可以让sensor一直进30fps，vps grp in 是30fps，vps chn out帧率对应客户想要的帧率。

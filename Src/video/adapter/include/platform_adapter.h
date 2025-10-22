@@ -48,12 +48,14 @@ typedef struct PlatformAdapter {
     /* ===== VPS (Video Processing/Scaling) Operations ===== */
     int (*vps_create_grp)(int VpsGrp, void* pGrpAttr);
     int (*vps_destroy_grp)(int VpsGrp);
-    int (*vps_create_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pConfig);  /* Deprecated - not used on AX */
+    int (*vps_create_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pVpsAttr);
     int (*vps_destroy_chn)(int VpsGrp, int VpsChn);
-    int (*vps_enable_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pConfig);  /* Deprecated - not used on AX */
+    int (*vps_enable_chn)(int VpsGrp, int VpsChn);
     int (*vps_disable_chn)(int VpsGrp, int VpsChn);
     int (*vps_create_vd_chn)(int VpsGrp, VPS_VD_CHN_ATTR_S* pVdAttr);  /* For VD (motion detection) channel */
     int (*vps_create_encode_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pConfig);  /* For encode channels - preferred */
+    int (*vps_get_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Get VPS channel attributes */
+    int (*vps_set_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Set VPS channel attributes */
 
     /* ===== VENC (Video Encoding) Operations ===== */
     /* Basic operations (Phase 1) */
@@ -71,6 +73,11 @@ typedef struct PlatformAdapter {
     int (*venc_set_rc_param)(int VencChn, VENC_RC_PARAM_S* pParam);
     int (*venc_request_idr)(int VencChn);
     int (*venc_set_rotate)(int VencChn, int enRotation);  /* Rotation angle: 0/90/180/270 */
+    int (*venc_set_mirror)(int VencChn, int bMirror, int bFlip);  /* Mirror and flip */
+
+    /* Additional VENC operations (Phase 3) */
+    int (*venc_set_stream_check)(int VencChn, int checkMode);  /* Stream check mode */
+    int (*venc_set_out_frame_rate)(int VencChn, int frameRate);  /* Output frame rate */
 
     /* ===== SYS (System Binding) Operations ===== */
     int (*sys_bind)(MDK_CHN_S* pSrcChn, MDK_CHN_S* pDestChn);

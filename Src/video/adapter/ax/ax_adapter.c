@@ -106,6 +106,19 @@ static int AX_VPS_DestroyGrp(int VpsGrp)
  * AX platform uses AX_VPS_CreateEncodeChannel() which calls SDK_COMM_VPS_Start()
  * internally, handling all channel setup automatically. */
 
+static int AX_VPS_CreateChn(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr)
+{
+    int ret = NI_MDK_VPS_CreateChn(VpsGrp, VpsChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_CreateChn failed, grp=%d chn=%d ret=%#x\n",
+                    VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS CreateChn success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
 static int AX_VPS_DestroyChn(int VpsGrp, int VpsChn)
 {
     int ret = NI_MDK_VPS_DestroyChn(VpsGrp, VpsChn);
@@ -119,6 +132,19 @@ static int AX_VPS_DestroyChn(int VpsGrp, int VpsChn)
     return AX_SUCCESS;
 }
 
+static int AX_VPS_EnableChn(int VpsGrp, int VpsChn)
+{
+    int ret = NI_MDK_VPS_EnableChn(VpsGrp, VpsChn);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_EnableChn failed, grp=%d chn=%d ret=%#x\n",
+                    VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS EnableChn success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
 static int AX_VPS_DisableChn(int VpsGrp, int VpsChn)
 {
     int ret = NI_MDK_VPS_DisableChn(VpsGrp, VpsChn);
@@ -129,6 +155,42 @@ static int AX_VPS_DisableChn(int VpsGrp, int VpsChn)
     }
 
     PRINT_INFO("AX VPS DisableChn success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_GetChnAttr(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS ChnAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_GetChnAttr(VpsGrp, VpsChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_GetChnAttr failed, grp=%d chn=%d ret=%#x\n",
+                    VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS GetChnAttr success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_SetChnAttr(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS ChnAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_SetChnAttr(VpsGrp, VpsChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_SetChnAttr failed, grp=%d chn=%d ret=%#x\n",
+                    VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS SetChnAttr success, grp=%d chn=%d\n", VpsGrp, VpsChn);
     return AX_SUCCESS;
 }
 
@@ -393,6 +455,48 @@ static int AX_VencSetRotate(int VencChn, int enRotation)
     return AX_SUCCESS;
 }
 
+static int AX_VencSetMirror(int VencChn, int bMirror, int bFlip)
+{
+    int ret = NI_MDK_VENC_SetMirrorAndFlip(VencChn, bMirror, bFlip);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VENC_SetMirrorAndFlip failed, chn=%d mirror=%d flip=%d ret=%#x\n",
+                    VencChn, bMirror, bFlip, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VENC SetMirrorAndFlip success, chn=%d mirror=%d flip=%d\n",
+               VencChn, bMirror, bFlip);
+    return AX_SUCCESS;
+}
+
+/* Phase 3: Additional VENC operations */
+
+static int AX_VencSetStreamCheck(int VencChn, int checkMode)
+{
+    int ret = NI_MDK_VENC_SetStreamCheck(VencChn, checkMode);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VENC_SetStreamCheck failed, chn=%d mode=%d ret=%#x\n",
+                    VencChn, checkMode, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VENC SetStreamCheck success, chn=%d mode=%d\n", VencChn, checkMode);
+    return AX_SUCCESS;
+}
+
+static int AX_VencSetOutFrameRate(int VencChn, int frameRate)
+{
+    int ret = NI_MDK_VENC_SetOutFrmRate(VencChn, frameRate);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VENC_SetOutFrmRate failed, chn=%d fps=%d ret=%#x\n",
+                    VencChn, frameRate, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VENC SetOutFrmRate success, chn=%d fps=%d\n", VencChn, frameRate);
+    return AX_SUCCESS;
+}
+
 /* ========================================================================
  *  SYS (System Binding) Operations
  * ======================================================================== */
@@ -510,10 +614,12 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     /* VPS operations */
     adapter->vps_create_grp = AX_VPS_CreateGrp;
     adapter->vps_destroy_grp = AX_VPS_DestroyGrp;
-    adapter->vps_create_chn = NULL;  /* Not used - removed */
+    adapter->vps_create_chn = AX_VPS_CreateChn;
     adapter->vps_destroy_chn = AX_VPS_DestroyChn;
-    adapter->vps_enable_chn = NULL;  /* Not used - removed */
+    adapter->vps_enable_chn = AX_VPS_EnableChn;  
     adapter->vps_disable_chn = AX_VPS_DisableChn;
+	adapter->vps_get_chn_attr = AX_VPS_GetChnAttr;
+	adapter->vps_set_chn_attr = AX_VPS_SetChnAttr;
     adapter->vps_create_vd_chn = AX_VPS_CreateVdChannel;
     adapter->vps_create_encode_chn = AX_VPS_CreateEncodeChannel;
 
@@ -531,6 +637,10 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     adapter->venc_set_rc_param = AX_VencSetRcParam;
     adapter->venc_request_idr = AX_VencRequestIDR;
     adapter->venc_set_rotate = AX_VencSetRotate;
+    adapter->venc_set_mirror = AX_VencSetMirror;
+    /* Phase 3: Additional VENC operations */
+    adapter->venc_set_stream_check = AX_VencSetStreamCheck;
+    adapter->venc_set_out_frame_rate = AX_VencSetOutFrameRate;
 
     /* SYS operations */
     adapter->sys_bind = AX_SYS_Bind;
