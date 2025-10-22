@@ -688,30 +688,6 @@ int VideoEncoder_SetRotate(int VencChn, int enRotation)
     return adapter->venc_set_rotate(VencChn, enRotation);
 }
 
-int VideoEncoder_SetMirror(int VencChn, int bMirror, int bFlip)
-{
-    PlatformAdapter *adapter = GetPlatformAdapter();
-
-    if (!adapter) {
-        PRINT_ERROR("Platform adapter not initialized\n");
-        return VENC_FAILURE;
-    }
-
-    if (VencChn < 0 || VencChn >= MAX_VENC_CHN_NUM) {
-        PRINT_ERROR("Invalid VENC channel %d\n", VencChn);
-        return VENC_FAILURE;
-    }
-
-    if (!adapter->venc_set_mirror) {
-        PRINT_ERROR("Mirror interface not available\n");
-        return VENC_FAILURE;
-    }
-
-    PRINT_INFO("Setting VENC channel %d mirror=%d flip=%d\n", VencChn, bMirror, bFlip);
-
-    return adapter->venc_set_mirror(VencChn, bMirror, bFlip);
-}
-
 /*
  * ===== Additional interfaces (Phase 3) =====
  */

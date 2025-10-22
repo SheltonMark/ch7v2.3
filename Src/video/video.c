@@ -4,6 +4,7 @@
 #include "mdk_vps.h"
 #include "ni_comm_vps.h"
 #include "modules/include/video_encoder.h"
+#include "modules/include/video_input.h"
 
 extern int capture_video_stream_start(void);
 extern int capture_video_stream_stop(void);
@@ -39,7 +40,7 @@ static VENC_PROFILE_E H264Profile_Table[]={
 
 static VENC_PROFILE_E H265Profile_Table[]={VENC_H265_MAIN_PROFILE};
 
-static CaptureImageQuality_t CaptureQtTable[6] =
+CaptureImageQuality_t CaptureQtTable[6] =
 {
 	{
 		.ImaxQP = 50,
@@ -79,7 +80,7 @@ static CaptureImageQuality_t CaptureQtTable[6] =
 	},
 };
 
-static CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6] =
+CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6] =
 {
 	{
 		.ImaxQP = 50,
@@ -3106,174 +3107,10 @@ int VideoSetRotate(int channel,ImagMode_e Rotate)
 //param [in]  channel 通道号
 //param [in]  mirror 镜像，0: 恢复镜像，1: 使能镜像 in
 //param [in]  flip 翻转，0: 恢复翻转，1: 使能翻转 in
-int VideoSetMirrorAndflip(int channel,int mirror,int flip)
+int VideoSetMirrorAndflip(int channel, int mirror, int flip)
 {
-	int ret = -1;
-	VI_DEV ViDev = 0;
-	int flipcurr = -1;
-	int mirrorcurr = -1;
-	SENSOR_ID SenId = 0;
-	VI_DEV_ATTR_S pstDevAttr;
-	static int last_flip = -1;
-	static int last_mirror = -1;
-	SensorDevice_p pSensorDevice = &GlobalDevice.SensorDevice;
-	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
-
-	memset(&pstDevAttr, 0, sizeof(pstDevAttr));
-
-	if(last_mirror == mirror && last_flip == flip)
-	{
-		return SUCCESS;
-	}
-
-	if((0 == mirror || 1 == mirror) && (0 == flip|| 1 == flip)) 
-	{
-		mirrorcurr = (mirror ^ pCaptureDevice->MirrorAndflip);
-		flipcurr = (flip ^ pCaptureDevice->MirrorAndflip);
-
-		ret = NI_MDK_VI_GetDevAttr(ViDev, &pstDevAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_MDK_VI_GetDevAttr failed with %x\n", ret);
-			return ret;
-		}
-
-		ret = NI_MDK_VI_DisableDev(ViDev);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_MDK_VI_DisableDev failed with %x\n", ret);
-			return ret;
-		}
-
-		ret = NI_SEN_SetMirror(SenId, mirrorcurr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_SEN_SetMirror failed with %x\n", ret);
-			return ret;
-		}
-
-		ret = NI_SEN_SetFlip(SenId, flipcurr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_SEN_SetFlip failed with %x\n", ret);
-			return ret;
-		}
-
-		if (SEN_TYPE_OS04L10 == pSensorDevice->SenType)
-		{
-			if (0 == mirrorcurr)
-			{
-				if (0 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_BGGR;
-				}
-				else if (1 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_GRBG;
-				}
-				else
-				{
-					PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-					return -1;
-				}
-			}
-			else if (1 == mirrorcurr)
-			{
-				if (0 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_GBRG;
-				}
-				else if (1 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_RGGB;
-				}
-				else
-				{
-					PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-					return -1;
-				}
-			}
-			else
-			{
-				PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-				return -1;
-			}
-		}
-		else if (SEN_TYPE_OS04D10 == pSensorDevice->SenType)
-		{
-			if (0 == mirrorcurr)
-			{
-				if (0 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_RGGB;
-				}
-				else if (1 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_GBRG;
-				}
-				else
-				{
-					PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-					return -1;
-				}
-			}
-			else if (1 == mirrorcurr)
-			{
-				if (0 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_GRBG;
-				}
-				else if (1 == flipcurr)
-				{
-					pstDevAttr.enRgbSeq = BAYER_SEQ_BGGR;
-				}
-				else
-				{
-					PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-					return -1;
-				}
-			}
-			else
-			{
-				PRINT_ERROR("VideoSetMirrorAndflip mirrorcurr %d and flipcurr %d error\n", mirrorcurr, flipcurr);
-				return -1;
-			}
-		}
-		else
-		{
-			//do nothing
-		}
-
-		ret = NI_MDK_VI_SetDevAttr(ViDev, &pstDevAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_MDK_VI_GetDevAttr failed with %x\n", ret);
-			return ret;
-		}
-
-		ret = NI_MDK_VI_EnableDev(ViDev);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("NI_MDK_VI_DisableDev failed with %x\n", ret);
-			return ret;
-		}
-
-		ret = HumanTrackSetMirror(mirror, flip);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("HumanTrackSetMirror failed with %x\n", ret);
-		}
-	}
-	else 
-	{
-		PRINT_ERROR("Set Papram error\n");
-		return -1;
-	}
-
-	last_flip = flip;
-	last_mirror = mirror;
-
-	return 0;
+	/* Forward to video_input module */
+	return VideoInput_SetMirrorAndFlip(channel, mirror, flip);
 }
 
 /// 设置捕获时间和格式。应用程序需要定时调用此函数与捕获的时间进行同步。

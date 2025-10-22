@@ -85,6 +85,95 @@ static int AX_VI_DestroyDev(int ViDev)
     return AX_SUCCESS;
 }
 
+static int AX_VI_GetDevAttr(int ViDev, VI_DEV_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VI DevAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VI_GetDevAttr(ViDev, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VI_GetDevAttr failed, ViDev=%d ret=%#x\n", ViDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VI GetDevAttr success, ViDev=%d\n", ViDev);
+    return AX_SUCCESS;
+}
+
+static int AX_VI_SetDevAttr(int ViDev, VI_DEV_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VI DevAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VI_SetDevAttr(ViDev, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VI_SetDevAttr failed, ViDev=%d ret=%#x\n", ViDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VI SetDevAttr success, ViDev=%d\n", ViDev);
+    return AX_SUCCESS;
+}
+
+static int AX_VI_DisableDev(int ViDev)
+{
+    int ret = NI_MDK_VI_DisableDev(ViDev);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VI_DisableDev failed, ViDev=%d ret=%#x\n", ViDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VI DisableDev success, ViDev=%d\n", ViDev);
+    return AX_SUCCESS;
+}
+
+static int AX_VI_EnableDev(int ViDev)
+{
+    int ret = NI_MDK_VI_EnableDev(ViDev);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VI_EnableDev failed, ViDev=%d ret=%#x\n", ViDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VI EnableDev success, ViDev=%d\n", ViDev);
+    return AX_SUCCESS;
+}
+
+/* ========================================================================
+ *  Sensor Operations
+ * ======================================================================== */
+
+static int AX_SensorSetMirror(int SenId, int bMirror)
+{
+    int ret = NI_SEN_SetMirror(SenId, bMirror);
+    if (ret != 0) {
+        PRINT_ERROR("NI_SEN_SetMirror failed, SenId=%d mirror=%d ret=%#x\n", 
+                    SenId, bMirror, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX Sensor SetMirror success, SenId=%d mirror=%d\n", SenId, bMirror);
+    return AX_SUCCESS;
+}
+
+static int AX_SensorSetFlip(int SenId, int bFlip)
+{
+    int ret = NI_SEN_SetFlip(SenId, bFlip);
+    if (ret != 0) {
+        PRINT_ERROR("NI_SEN_SetFlip failed, SenId=%d flip=%d ret=%#x\n",
+                    SenId, bFlip, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX Sensor SetFlip success, SenId=%d flip=%d\n", SenId, bFlip);
+    return AX_SUCCESS;
+}
+
+
 /* ========================================================================
  *  VPS (Video Processing/Scaling) Operations
  * ======================================================================== */
@@ -455,20 +544,6 @@ static int AX_VencSetRotate(int VencChn, int enRotation)
     return AX_SUCCESS;
 }
 
-static int AX_VencSetMirror(int VencChn, int bMirror, int bFlip)
-{
-    int ret = NI_MDK_VENC_SetMirrorAndFlip(VencChn, bMirror, bFlip);
-    if (ret != 0) {
-        PRINT_ERROR("NI_MDK_VENC_SetMirrorAndFlip failed, chn=%d mirror=%d flip=%d ret=%#x\n",
-                    VencChn, bMirror, bFlip, ret);
-        return AX_FAILURE;
-    }
-
-    PRINT_INFO("AX VENC SetMirrorAndFlip success, chn=%d mirror=%d flip=%d\n",
-               VencChn, bMirror, bFlip);
-    return AX_SUCCESS;
-}
-
 /* Phase 3: Additional VENC operations */
 
 static int AX_VencSetStreamCheck(int VencChn, int checkMode)
@@ -610,6 +685,14 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     adapter->vi_start_dev = AX_VI_StartDev;
     adapter->vi_stop_dev = AX_VI_StopDev;
     adapter->vi_destroy_dev = AX_VI_DestroyDev;
+    adapter->vi_get_dev_attr = AX_VI_GetDevAttr;
+    adapter->vi_set_dev_attr = AX_VI_SetDevAttr;
+    adapter->vi_disable_dev = AX_VI_DisableDev;
+    adapter->vi_enable_dev = AX_VI_EnableDev;
+
+    /* Sensor Operations */
+    adapter->sensor_set_mirror = AX_SensorSetMirror;
+    adapter->sensor_set_flip = AX_SensorSetFlip;
 
     /* VPS operations */
     adapter->vps_create_grp = AX_VPS_CreateGrp;
@@ -637,7 +720,6 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     adapter->venc_set_rc_param = AX_VencSetRcParam;
     adapter->venc_request_idr = AX_VencRequestIDR;
     adapter->venc_set_rotate = AX_VencSetRotate;
-    adapter->venc_set_mirror = AX_VencSetMirror;
     /* Phase 3: Additional VENC operations */
     adapter->venc_set_stream_check = AX_VencSetStreamCheck;
     adapter->venc_set_out_frame_rate = AX_VencSetOutFrameRate;

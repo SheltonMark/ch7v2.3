@@ -44,6 +44,14 @@ typedef struct PlatformAdapter {
     int (*vi_start_dev)(int ViDev);
     int (*vi_stop_dev)(int ViDev);
     int (*vi_destroy_dev)(int ViDev);
+    int (*vi_get_dev_attr)(int ViDev, VI_DEV_ATTR_S* pAttr);  /* Get VI device attributes */
+    int (*vi_set_dev_attr)(int ViDev, VI_DEV_ATTR_S* pAttr);  /* Set VI device attributes */
+    int (*vi_disable_dev)(int ViDev);  /* Disable VI device */
+    int (*vi_enable_dev)(int ViDev);  /* Enable VI device */
+
+    /* ===== Sensor Operations ===== */
+    int (*sensor_set_mirror)(int SenId, int bMirror);  /* Set sensor mirror */
+    int (*sensor_set_flip)(int SenId, int bFlip);  /* Set sensor flip */
 
     /* ===== VPS (Video Processing/Scaling) Operations ===== */
     int (*vps_create_grp)(int VpsGrp, void* pGrpAttr);
@@ -73,7 +81,6 @@ typedef struct PlatformAdapter {
     int (*venc_set_rc_param)(int VencChn, VENC_RC_PARAM_S* pParam);
     int (*venc_request_idr)(int VencChn);
     int (*venc_set_rotate)(int VencChn, int enRotation);  /* Rotation angle: 0/90/180/270 */
-    int (*venc_set_mirror)(int VencChn, int bMirror, int bFlip);  /* Mirror and flip */
 
     /* Additional VENC operations (Phase 3) */
     int (*venc_set_stream_check)(int VencChn, int checkMode);  /* Stream check mode */
