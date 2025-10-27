@@ -572,9 +572,9 @@ void MediaHardWareInit(int Normal)
 	}
 
 	/* Initialize OSD after pipeline, before capture */
-	if(VideoOverlay_Init() != HI_SUCCESS)
+	if(VideoOSD_Init() != HI_SUCCESS)
 	{
-		PRINT_WARN("VideoOverlay_Init failed (non-fatal)\n");
+		PRINT_WARN("videoOSD_Init failed (non-fatal)\n");
 	}
 
 	if(AudioInCreate(CHL_MAIN_T) != HI_SUCCESS)

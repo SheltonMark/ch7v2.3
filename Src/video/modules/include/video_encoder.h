@@ -232,11 +232,11 @@ int VideoEncoder_SetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam);
 
 /**
  * @brief 设置编码图像旋转角度
- * @param VencChn 编码通道号
- * @param enRotation 旋转角度（0/90/180/270）
+ * @param channel 编码通道号
+ * @param Rotate 旋转角度（0/90/180/270）
  * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
  */
-int VideoEncoder_SetRotate(int VencChn, int enRotation);
+int VideoEncoder_SetRotate(int channel, int Rotate);
 
 /**
  * @brief 设置编码图像镜像/翻转

@@ -173,6 +173,128 @@ static int AX_SensorSetFlip(int SenId, int bFlip)
     return AX_SUCCESS;
 }
 
+static int AX_SensorGetCurInfo(int SenId, SEN_INFO_S* pstSenInfo)
+{
+    if (!pstSenInfo) {
+        PRINT_ERROR("Sensor info pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_SEN_GetCurInfo(SenId, pstSenInfo);
+    if (ret != 0) {
+        PRINT_ERROR("NI_SEN_GetCurInfo failed, SenId=%d ret=%#x\n", SenId, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX Sensor GetCurInfo success, SenId=%d fps=%d\n", SenId, pstSenInfo->stSenFmtAttr.u32Fps);
+    return AX_SUCCESS;
+}
+
+/* ========================================================================
+ *  ISP (Image Signal Processor) Operations
+ * ======================================================================== */
+
+static int AX_ISP_GetPubAttr(int IspDev, PISP_PUB_ATTR_S* pstPubAttr)
+{
+    if (!pstPubAttr) {
+        PRINT_ERROR("ISP PubAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_PISP_GetPubAttr(IspDev, pstPubAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_PISP_GetPubAttr failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP GetPubAttr success, IspDev=%d fps=%d\n", IspDev, pstPubAttr->u32FrameRate);
+    return AX_SUCCESS;
+}
+
+static int AX_ISP_SetPubAttr(int IspDev, PISP_PUB_ATTR_S* pstPubAttr)
+{
+    if (!pstPubAttr) {
+        PRINT_ERROR("ISP PubAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_PISP_SetPubAttr(IspDev, pstPubAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_PISP_SetPubAttr failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP SetPubAttr success, IspDev=%d fps=%d\n", IspDev, pstPubAttr->u32FrameRate);
+    return AX_SUCCESS;
+}
+
+static int AX_ISP_GetVideoFmtAttr(int IspDev, AISP_VIDEO_FMT_INFO_S* pstVideoFmtInfo)
+{
+    if (!pstVideoFmtInfo) {
+        PRINT_ERROR("ISP VideoFmtInfo pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_AISP_GetVideoFmtAttr(IspDev, pstVideoFmtInfo);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_AISP_GetVideoFmtAttr failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP GetVideoFmtAttr success, IspDev=%d fps=%d\n", IspDev, pstVideoFmtInfo->u32Fps);
+    return AX_SUCCESS;
+}
+
+static int AX_ISP_SetVideoFmtAttr(int IspDev, AISP_VIDEO_FMT_INFO_S* pstVideoFmtInfo)
+{
+    if (!pstVideoFmtInfo) {
+        PRINT_ERROR("ISP VideoFmtInfo pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_AISP_SetVideoFmtAttr(IspDev, pstVideoFmtInfo);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_AISP_SetVideoFmtAttr failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP SetVideoFmtAttr success, IspDev=%d fps=%d\n", IspDev, pstVideoFmtInfo->u32Fps);
+    return AX_SUCCESS;
+}
+
+static int AX_ISP_GetAutoFps(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl)
+{
+    if (!pstAFpsCtrl) {
+        PRINT_ERROR("ISP AFpsCtrl pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_AISP_GetAutoFps(IspDev, pstAFpsCtrl);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_AISP_GetAutoFps failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP GetAutoFps success, IspDev=%d enable=%d\n", IspDev, pstAFpsCtrl->bEnable);
+    return AX_SUCCESS;
+}
+
+static int AX_ISP_SetAutoFps(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl)
+{
+    if (!pstAFpsCtrl) {
+        PRINT_ERROR("ISP AFpsCtrl pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_AISP_SetAutoFps(IspDev, pstAFpsCtrl);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_AISP_SetAutoFps failed, IspDev=%d ret=%#x\n", IspDev, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX ISP SetAutoFps success, IspDev=%d enable=%d fps=%d\n", IspDev, pstAFpsCtrl->bEnable, pstAFpsCtrl->u32NewFps);
+    return AX_SUCCESS;
+}
 
 /* ========================================================================
  *  VPS (Video Processing/Scaling) Operations
@@ -332,6 +454,132 @@ static int AX_VPS_CreateEncodeChannel(int VpsGrp, int VpsChn, VPS_CONFIG_S* pCon
 
     PRINT_INFO("AX VPS CreateEncodeChannel success, grp=%d chn=%d %dx%d\n",
                VpsGrp, VpsChn, pConfig->u32OutWidth, pConfig->u32OutHeight);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_GetGrpAttr(int VpsGrp, VPS_GRP_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS GrpAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_GetGrpAttr(VpsGrp, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_GetGrpAttr failed, grp=%d ret=%#x\n", VpsGrp, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS GetGrpAttr success, grp=%d\n", VpsGrp);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_SetGrpAttr(int VpsGrp, VPS_GRP_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS GrpAttr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_SetGrpAttr(VpsGrp, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_SetGrpAttr failed, grp=%d ret=%#x\n", VpsGrp, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS SetGrpAttr success, grp=%d\n", VpsGrp);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_GetModParam(int VpsGrp, VPS_MOD_PARAM_S* pParam)
+{
+    if (!pParam) {
+        PRINT_ERROR("VPS ModParam pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_GetModParam(VpsGrp, pParam);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_GetModParam failed, grp=%d ret=%#x\n", VpsGrp, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS GetModParam success, grp=%d\n", VpsGrp);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_SetModParam(int VpsGrp, VPS_MOD_PARAM_S* pParam)
+{
+    if (!pParam) {
+        PRINT_ERROR("VPS ModParam pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_SetModParam(VpsGrp, pParam);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_SetModParam failed, grp=%d ret=%#x\n", VpsGrp, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS SetModParam success, grp=%d\n", VpsGrp);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_GetChnMaskAttr(int VpsGrp, int VpsChn, VPS_MASK_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS Mask attr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_GetChnMaskAttr(VpsGrp, VpsChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_GetChnMaskAttr failed, grp=%d chn=%d ret=%#x\n", VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS GetChnMaskAttr success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_SetChnMaskAttr(int VpsGrp, int VpsChn, VPS_MASK_ATTR_S* pAttr)
+{
+    if (!pAttr) {
+        PRINT_ERROR("VPS Mask attr pointer is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_VPS_SetChnMaskAttr(VpsGrp, VpsChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_SetChnMaskAttr failed, grp=%d chn=%d ret=%#x\n", VpsGrp, VpsChn, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS SetChnMaskAttr success, grp=%d chn=%d\n", VpsGrp, VpsChn);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_EnableChnMask(int VpsGrp, int VpsChn, int index)
+{
+    int ret = NI_MDK_VPS_EnableChnMask(VpsGrp, VpsChn, index);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_EnableChnMask failed, grp=%d chn=%d index=%d ret=%#x\n", VpsGrp, VpsChn, index, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS EnableChnMask success, grp=%d chn=%d index=%d\n", VpsGrp, VpsChn, index);
+    return AX_SUCCESS;
+}
+
+static int AX_VPS_DisableChnMask(int VpsGrp, int VpsChn, int index)
+{
+    int ret = NI_MDK_VPS_DisableChnMask(VpsGrp, VpsChn, index);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_VPS_DisableChnMask failed, grp=%d chn=%d index=%d ret=%#x\n", VpsGrp, VpsChn, index, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX VPS DisableChnMask success, grp=%d chn=%d index=%d\n", VpsGrp, VpsChn, index);
     return AX_SUCCESS;
 }
 
@@ -622,6 +870,130 @@ static int AX_SYS_UnBind(MDK_CHN_S* pSrcChn, MDK_CHN_S* pDestChn)
  *  OSD (On-Screen Display) Operations
  * ======================================================================== */
 
+/* Basic OSD operations - Direct SDK mapping */
+
+static int AX_OSD_CreateRegion(NI_U32 u32Handle, OSD_REGION_S* pRegion)
+{
+    if (!pRegion) {
+        PRINT_ERROR("OSD region is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_Create(u32Handle, pRegion);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_Create failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX OSD CreateRegion success, handle=%u\n", u32Handle);
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_DestroyRegion(NI_U32 u32Handle)
+{
+    int ret = NI_MDK_OSD_Destroy(u32Handle);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_Destroy failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    PRINT_INFO("AX OSD DestroyRegion success, handle=%u\n", u32Handle);
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_GetBuffer(NI_U32 u32Handle, OSD_BUFFER_INFO_S* pBufInfo)
+{
+    if (!pBufInfo) {
+        PRINT_ERROR("OSD buffer info is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_GetBuffer(u32Handle, pBufInfo);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_GetBuffer failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_SetPalette(MDK_CHN_S* pChn, OSD_PALETTE_S* pPalette)
+{
+    if (!pChn || !pPalette) {
+        PRINT_ERROR("OSD channel or palette is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_SetPalette(pChn, pPalette);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_SetPalette failed, ret=%#x\n", ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_GetDispAttr(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr)
+{
+    if (!pChn || !pAttr) {
+        PRINT_ERROR("OSD channel or attr is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_GetDispAttr(u32Handle, pChn, pAttr);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_GetDispAttr failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_PaintToChn(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr, NI_U32 timeout)
+{
+    if (!pChn || !pAttr) {
+        PRINT_ERROR("OSD channel or attr is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_PaintToChn(u32Handle, pChn, pAttr, timeout);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_PaintToChn failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_ClearFromChn(NI_U32 u32Handle, MDK_CHN_S* pChn, NI_U32 timeout)
+{
+    if (!pChn) {
+        PRINT_ERROR("OSD channel is NULL\n");
+        return AX_FAILURE;
+    }
+
+    int ret = NI_MDK_OSD_ClearFromChn(u32Handle, pChn, timeout);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_ClearFromChn failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+static int AX_OSD_Refresh(NI_U32 u32Handle, NI_U32 timeout)
+{
+    int ret = NI_MDK_OSD_Refresh(u32Handle, timeout);
+    if (ret != 0) {
+        PRINT_ERROR("NI_MDK_OSD_Refresh failed, handle=%u ret=%#x\n", u32Handle, ret);
+        return AX_FAILURE;
+    }
+
+    return AX_SUCCESS;
+}
+
+/* Legacy OSD operations (for compatibility) */
+
 static int AX_OSD_Create(NI_U32 u32Handle, MDK_CHN_S* pChn, SAMPLE_OSD_CONFIG_S* pCfg)
 {
     if (!pChn || !pCfg) {
@@ -648,19 +1020,6 @@ static int AX_OSD_Destroy(NI_U32 u32Handle)
      * is typically handled during system shutdown */
     PRINT_WARN("AX_OSD_Destroy called but needs MDK_CHN_S parameter - skipped\n");
     return AX_SUCCESS;
-}
-
-static int AX_OSD_Update(NI_U32 u32Handle, void* pData, int len)
-{
-    if (!pData || len <= 0) {
-        PRINT_ERROR("OSD data is invalid\n");
-        return AX_FAILURE;
-    }
-
-    /* Update OSD content - implementation depends on SDK */
-    /* TODO: Implement OSD update functionality when needed */
-    PRINT_WARN("AX_OSD_Update not fully implemented yet, handle=%u len=%d\n", u32Handle, len);
-    return -1;  /* Return failure to indicate not implemented */
 }
 
 /* ========================================================================
@@ -693,6 +1052,15 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     /* Sensor Operations */
     adapter->sensor_set_mirror = AX_SensorSetMirror;
     adapter->sensor_set_flip = AX_SensorSetFlip;
+    adapter->sensor_get_cur_info = AX_SensorGetCurInfo;
+
+    /* ISP Operations */
+    adapter->isp_get_pub_attr = AX_ISP_GetPubAttr;
+    adapter->isp_set_pub_attr = AX_ISP_SetPubAttr;
+    adapter->isp_get_video_fmt_attr = AX_ISP_GetVideoFmtAttr;
+    adapter->isp_set_video_fmt_attr = AX_ISP_SetVideoFmtAttr;
+    adapter->isp_get_auto_fps = AX_ISP_GetAutoFps;
+    adapter->isp_set_auto_fps = AX_ISP_SetAutoFps;
 
     /* VPS operations */
     adapter->vps_create_grp = AX_VPS_CreateGrp;
@@ -705,6 +1073,14 @@ int AX_InitAdapter(PlatformAdapter* adapter)
 	adapter->vps_set_chn_attr = AX_VPS_SetChnAttr;
     adapter->vps_create_vd_chn = AX_VPS_CreateVdChannel;
     adapter->vps_create_encode_chn = AX_VPS_CreateEncodeChannel;
+    adapter->vps_get_grp_attr = AX_VPS_GetGrpAttr;
+    adapter->vps_set_grp_attr = AX_VPS_SetGrpAttr;
+    adapter->vps_get_mod_param = AX_VPS_GetModParam;
+    adapter->vps_set_mod_param = AX_VPS_SetModParam;
+    adapter->vps_get_chn_mask_attr = AX_VPS_GetChnMaskAttr;
+    adapter->vps_set_chn_mask_attr = AX_VPS_SetChnMaskAttr;
+    adapter->vps_enable_chn_mask = AX_VPS_EnableChnMask;
+    adapter->vps_disable_chn_mask = AX_VPS_DisableChnMask;
 
     /* VENC operations */
     adapter->venc_create = AX_VencCreate;
@@ -715,12 +1091,12 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     adapter->venc_release_stream = AX_VencReleaseStream;
     adapter->venc_set_chn_attr = AX_VencSetChnAttr;
     adapter->venc_get_chn_attr = AX_VencGetChnAttr;
-    /* Phase 2: Dynamic parameter control */
+    /* Dynamic parameter control */
     adapter->venc_get_rc_param = AX_VencGetRcParam;
     adapter->venc_set_rc_param = AX_VencSetRcParam;
     adapter->venc_request_idr = AX_VencRequestIDR;
     adapter->venc_set_rotate = AX_VencSetRotate;
-    /* Phase 3: Additional VENC operations */
+    /* Additional VENC operations */
     adapter->venc_set_stream_check = AX_VencSetStreamCheck;
     adapter->venc_set_out_frame_rate = AX_VencSetOutFrameRate;
 
@@ -729,9 +1105,16 @@ int AX_InitAdapter(PlatformAdapter* adapter)
     adapter->sys_unbind = AX_SYS_UnBind;
 
     /* OSD operations */
+    adapter->osd_create_region = AX_OSD_CreateRegion;
+    adapter->osd_destroy_region = AX_OSD_DestroyRegion;
+    adapter->osd_get_buffer = AX_OSD_GetBuffer;
+    adapter->osd_set_palette = AX_OSD_SetPalette;
+    adapter->osd_get_disp_attr = AX_OSD_GetDispAttr;
+    adapter->osd_paint_to_chn = AX_OSD_PaintToChn;
+    adapter->osd_clear_from_chn = AX_OSD_ClearFromChn;
+    adapter->osd_refresh = AX_OSD_Refresh;
     adapter->osd_create = AX_OSD_Create;
     adapter->osd_destroy = AX_OSD_Destroy;
-    adapter->osd_update = AX_OSD_Update;
 
     PRINT_INFO("AX adapter initialized with %lu function pointers\n",
                sizeof(PlatformAdapter) / sizeof(void*));

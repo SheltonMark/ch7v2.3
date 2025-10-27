@@ -226,3 +226,189 @@ int VideoInput_SetMirrorAndFlip(int channel, int mirror, int flip)
     PRINT_INFO("Successfully set mirror=%d flip=%d\n", mirror, flip);
     return VI_SUCCESS;
 }
+
+/**
+ * @brief 处理输入格式变化（ISP 帧率同步）
+ *
+ * 当通道分辨率或帧率变化时，需要同时更新 ISP、VPS 和 Sensor 的帧率设置
+ * 这是三者联动的关键功能
+ *
+ * fps 从 pVideoInDevice->VDInfo[channel].ViDstFps 读取，如果是 4K 分辨率则固定为 15fps
+ *
+ * @param channel     物理通道号
+ * @param pstSize     分辨率 (宽度和高度)
+ * @return 0 成功，<0 失败
+ */
+int VideoInput_HandleFormatChange(int channel, SIZE_S pstSize)
+{
+    int ret = VI_SUCCESS;
+    int fps = 0;
+    int sensor_fps = 0;
+    ISP_DEV IspDev = 0;
+    SENSOR_ID SenId = 0;
+    VPS_GRP VpsGrp = 0;
+
+    SEN_INFO_S stSenInfo;
+    PISP_PUB_ATTR_S stPubAttr;
+    AISP_VIDEO_FMT_INFO_S stVideoFmtInfo;
+    AISP_AFPS_CTRL_S stAFpsCtrl;
+    VPS_GRP_ATTR_S stGrpAttr;
+
+    PlatformAdapter *adapter = GetPlatformAdapter();
+    VideoInDevice_p pVideoInDevice = &GlobalDevice.VideoInDevice;
+
+    if (!adapter) {
+        PRINT_ERROR("Platform adapter not initialized\n");
+        return VI_FAILURE;
+    }
+
+    /* ===== Step 0: 确定目标帧率 ===== */
+#ifdef SUPPORT_4K
+    if (pstSize.u32Width == 3840 && pstSize.u32Height == 2160) {
+        fps = 15;  /* 4K resolution fixed to 15fps */
+    }
+    else
+#endif
+    {
+        /* 从 GlobalDevice 读取目标帧率 */
+        if (30 == pVideoInDevice->VDInfo[channel].ViDstFps) {
+            fps = 30;
+        }
+        else if (25 == pVideoInDevice->VDInfo[channel].ViDstFps) {
+            fps = 25;
+        }
+    }
+
+    if (!fps) {
+        PRINT_INFO("VI: Keep current fps (fps=0)\n");
+        return VI_SUCCESS;
+    }
+
+    PRINT_INFO("VI: HandleFormatChange - channel=%d, %dx%d@%dfps\n",
+               channel, pstSize.u32Width, pstSize.u32Height, fps);
+
+    /* ===== Step 1: 获取当前 Sensor 信息 ===== */
+    memset(&stSenInfo, 0, sizeof(SEN_INFO_S));
+    ret = adapter->sensor_get_cur_info(SenId, &stSenInfo);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to get sensor current info\n");
+        return ret;
+    }
+
+    sensor_fps = stSenInfo.stSenFmtAttr.u32Fps / 1000;  /* Convert from milliHz to Hz */
+    PRINT_INFO("VI: Current sensor fps=%d\n", sensor_fps);
+
+    /* ===== Step 2: 如果帧率未变化，则直接返回 ===== */
+    if (stSenInfo.stSenFmtAttr.u32Fps == (fps * 1000)) {
+        PRINT_INFO("VI: Sensor fps unchanged (%d), skipping\n", fps);
+        return VI_SUCCESS;
+    }
+
+    /* ===== Step 3: 获取 ISP 公共属性 ===== */
+    memset(&stPubAttr, 0, sizeof(PISP_PUB_ATTR_S));
+    ret = adapter->isp_get_pub_attr(IspDev, &stPubAttr);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to get ISP public attributes\n");
+        return ret;
+    }
+
+    /* ===== Step 4: 设置 ISP 帧率 ===== */
+    stPubAttr.u32FrameRate = fps;
+    ret = adapter->isp_set_pub_attr(IspDev, &stPubAttr);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to set ISP public attributes\n");
+        return ret;
+    }
+    PRINT_INFO("VI: Set ISP frame rate to %d fps\n", fps);
+
+    /* ===== Step 5: 获取 ISP 视频格式信息 ===== */
+    memset(&stVideoFmtInfo, 0, sizeof(AISP_VIDEO_FMT_INFO_S));
+    ret = adapter->isp_get_video_fmt_attr(IspDev, &stVideoFmtInfo);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to get ISP video format attributes\n");
+        return ret;
+    }
+
+    /* ===== Step 6: 设置 ISP 视频格式帧率 ===== */
+    stVideoFmtInfo.u32Fps = fps * 1000;  /* Convert to milliHz */
+    ret = adapter->isp_set_video_fmt_attr(IspDev, &stVideoFmtInfo);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to set ISP video format attributes\n");
+        return ret;
+    }
+    PRINT_INFO("VI: Set ISP video fmt fps to %d (0x%x milliHz)\n", fps, stVideoFmtInfo.u32Fps);
+
+    /* ===== Step 7: 获取 ISP 自动帧率控制设置 ===== */
+    memset(&stAFpsCtrl, 0, sizeof(AISP_AFPS_CTRL_S));
+    ret = adapter->isp_get_auto_fps(IspDev, &stAFpsCtrl);
+    if (ret != VI_SUCCESS) {
+        PRINT_WARN("Failed to get ISP auto FPS control (continuing anyway)\n");
+        /* Not a critical failure */
+    } else if (stAFpsCtrl.bEnable) {
+        /* 如果启用了自动降帧，需要更新降帧目标帧率为 sensor 帧率的一半 */
+        stAFpsCtrl.u32NewFps = stVideoFmtInfo.u32Fps / 2;
+        ret = adapter->isp_set_auto_fps(IspDev, &stAFpsCtrl);
+        if (ret != VI_SUCCESS) {
+            PRINT_WARN("Failed to set ISP auto FPS (continuing anyway)\n");
+            /* Not a critical failure */
+        }
+        PRINT_INFO("VI: Updated ISP auto FPS to %d\n", stAFpsCtrl.u32NewFps);
+    }
+
+    /* ===== Step 8: 设置 VPS Group 输入帧率 ===== */
+    if (!adapter->vps_get_grp_attr || !adapter->vps_set_grp_attr) {
+        PRINT_ERROR("VPS group attribute operations not supported\n");
+        return VI_FAILURE;
+    }
+
+    memset(&stGrpAttr, 0, sizeof(VPS_GRP_ATTR_S));
+    ret = adapter->vps_get_grp_attr(VpsGrp, &stGrpAttr);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to get VPS group attributes\n");
+        return ret;
+    }
+
+    stGrpAttr.u32InFps = fps;
+    ret = adapter->vps_set_grp_attr(VpsGrp, &stGrpAttr);
+    if (ret != VI_SUCCESS) {
+        PRINT_ERROR("Failed to set VPS group attributes\n");
+        return ret;
+    }
+    PRINT_INFO("VI: Set VPS group input fps to %d\n", fps);
+
+    /* ===== Step 9: 更新全局设备配置 ===== */
+    pVideoInDevice->VDInfo[channel].ViDstFps = fps;
+
+    PRINT_INFO("VI: Format change completed successfully: %dx%d@%dfps\n", pstSize.u32Width, pstSize.u32Height, fps);
+    return VI_SUCCESS;
+}
+
+int VideoInput_SetVstd(int channel,DWORD dwStandard)
+{
+	SIZE_S pstSize;
+	int ret = -1;
+	VideoInDevice_p pVideoInDevice = &GlobalDevice.VideoInDevice;
+
+    pstSize.u32Width = pVideoInDevice->vi_pic.u32Width;
+    pstSize.u32Height = pVideoInDevice->vi_pic.u32Height;
+
+    if(dwStandard == VIDEO_STANDARD_PAL)
+	{
+		pVideoInDevice->VDInfo[channel].ViDstFps = 25;
+	}
+	else if(dwStandard == VIDEO_STANDARD_NTSC)
+	{
+		pVideoInDevice->VDInfo[channel].ViDstFps = 30;
+	}
+
+	/* Use the new modularized ISP/Sensor/VPS synchronization function */
+	ret = VideoInput_HandleFormatChange(channel, pstSize);
+	if (ret != RETURN_OK) {
+		PRINT_ERROR("VideoInput_HandleFormatChange failed: %x\n", ret);
+		/* Continue processing - not critical for video standard change */
+	}
+
+	return 0;
+}
+
+

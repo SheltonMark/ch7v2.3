@@ -636,21 +636,6 @@ int SampleOsdPaletteInit(OSD_PALETTE_S *pstOsdPalette);
 /// \retval 0  设置成功。
 void OSD_TEST_ConvertToLittleEndian2(NI_VOID *pOsdData, OSD_PIXEL_FORMAT_E enPixelFormat, NI_U32 u32DataSize);
 
-/// vi初始化。
-/// \retval 0  初始化成功
-/// \retval <0  初始化失败
-int video_in_init(void);
-
-/// vps初始化。
-/// \retval 0  初始化成功
-/// \retval <0  初始化失败
-int video_vps_start(void);
-
-/// venc初始化。
-/// \retval 0  初始化成功
-/// \retval <0  初始化失败
-int video_venc_start(void);
-
 /// 开启编码自适应。
 /// \retval 0  成功
 /// \retval <0  失败
@@ -666,26 +651,6 @@ int video_venc_adaptive_stop();
 /// \retval 0  开始失败
 int get_frame_rate(float FrameRate);
 
-/// 创建的OSD句柄
-/// \retval 0  开始成功
-/// \retval 0  开始失败
-int osd_create();
-
-/// 销毁所有的OSD句柄
-/// 调用此接口后，会调用OSD锁，所有OSD均无法设置
-/// \retval 0  开始成功
-/// \retval 0  开始失败
-int osd_destroy();
-
-/// 创建LOGO句柄
-/// \retval 0  开始成功
-/// \retval 0  开始失败
-int logo_create();
-
-/// 销毁所有的LOGO句柄
-/// \retval 0  开始成功
-/// \retval 0  开始失败
-int logo_destroy();
 
 #ifdef __cplusplus
 }

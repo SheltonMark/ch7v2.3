@@ -52,6 +52,15 @@ typedef struct PlatformAdapter {
     /* ===== Sensor Operations ===== */
     int (*sensor_set_mirror)(int SenId, int bMirror);  /* Set sensor mirror */
     int (*sensor_set_flip)(int SenId, int bFlip);  /* Set sensor flip */
+    int (*sensor_get_cur_info)(int SenId, SEN_INFO_S* pstSenInfo);  /* Get sensor current info */
+
+    /* ===== ISP (Image Signal Processor) Operations ===== */
+    int (*isp_get_pub_attr)(int IspDev, PISP_PUB_ATTR_S* pstPubAttr);  /* Get ISP public attributes */
+    int (*isp_set_pub_attr)(int IspDev, PISP_PUB_ATTR_S* pstPubAttr);  /* Set ISP public attributes */
+    int (*isp_get_video_fmt_attr)(int IspDev, AISP_VIDEO_FMT_INFO_S* pstVideoFmtInfo);  /* Get ISP video format attributes */
+    int (*isp_set_video_fmt_attr)(int IspDev, AISP_VIDEO_FMT_INFO_S* pstVideoFmtInfo);  /* Set ISP video format attributes */
+    int (*isp_get_auto_fps)(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl);  /* Get ISP auto FPS control */
+    int (*isp_set_auto_fps)(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl);  /* Set ISP auto FPS control */
 
     /* ===== VPS (Video Processing/Scaling) Operations ===== */
     int (*vps_create_grp)(int VpsGrp, void* pGrpAttr);
@@ -64,6 +73,14 @@ typedef struct PlatformAdapter {
     int (*vps_create_encode_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pConfig);  /* For encode channels - preferred */
     int (*vps_get_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Get VPS channel attributes */
     int (*vps_set_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Set VPS channel attributes */
+    int (*vps_get_grp_attr)(int VpsGrp, VPS_GRP_ATTR_S* pAttr);  /* Get VPS group attributes */
+    int (*vps_set_grp_attr)(int VpsGrp, VPS_GRP_ATTR_S* pAttr);  /* Set VPS group attributes */
+    int (*vps_get_mod_param)(int VpsGrp, VPS_MOD_PARAM_S* pParam);  /* Get VPS module timestamp parameters */
+    int (*vps_set_mod_param)(int VpsGrp, VPS_MOD_PARAM_S* pParam);  /* Set VPS module timestamp parameters */
+    int (*vps_get_chn_mask_attr)(int VpsGrp, int VpsChn, VPS_MASK_ATTR_S* pAttr);  /* Get VPS channel mask attributes */
+    int (*vps_set_chn_mask_attr)(int VpsGrp, int VpsChn, VPS_MASK_ATTR_S* pAttr);  /* Set VPS channel mask attributes */
+    int (*vps_enable_chn_mask)(int VpsGrp, int VpsChn, int index);  /* Enable VPS channel mask */
+    int (*vps_disable_chn_mask)(int VpsGrp, int VpsChn, int index);  /* Disable VPS channel mask */
 
     /* ===== VENC (Video Encoding) Operations ===== */
     /* Basic operations (Phase 1) */
@@ -91,6 +108,17 @@ typedef struct PlatformAdapter {
     int (*sys_unbind)(MDK_CHN_S* pSrcChn, MDK_CHN_S* pDestChn);
 
     /* ===== OSD (On-Screen Display) Operations ===== */
+    /* Basic OSD operations */
+    int (*osd_create_region)(NI_U32 u32Handle, OSD_REGION_S* pRegion);
+    int (*osd_destroy_region)(NI_U32 u32Handle);
+    int (*osd_get_buffer)(NI_U32 u32Handle, OSD_BUFFER_INFO_S* pBufInfo);
+    int (*osd_set_palette)(MDK_CHN_S* pChn, OSD_PALETTE_S* pPalette);
+    int (*osd_get_disp_attr)(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr);
+    int (*osd_paint_to_chn)(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr, NI_U32 timeout);
+    int (*osd_clear_from_chn)(NI_U32 u32Handle, MDK_CHN_S* pChn, NI_U32 timeout);
+    int (*osd_refresh)(NI_U32 u32Handle, NI_U32 timeout);
+
+    /* Legacy OSD operations (for compatibility) */
     int (*osd_create)(NI_U32 u32Handle, MDK_CHN_S* pChn, SAMPLE_OSD_CONFIG_S* pCfg);
     int (*osd_destroy)(NI_U32 u32Handle);
     int (*osd_update)(NI_U32 u32Handle, void* pData, int len);

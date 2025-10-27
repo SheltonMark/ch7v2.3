@@ -20,6 +20,8 @@
 #include "../../Include/APIs/TdCommon.h"
 #include "../../Include/APIs/Video.h"
 #include "../../Include/APIs/Capture.h"
+#include "../modules/include/video_vps.h"
+#include "../modules/include/video_osd.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
 /* ========================================================================== */
@@ -31,10 +33,124 @@
 /* ========================================================================== */
 /*                          全局变量定义区                                    */
 /* ========================================================================== */
+// QP tables from video.c
+extern CaptureImageQuality_t CaptureQtTable[6];
+extern CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6];
+
+// Sensor frame rate
+extern unsigned int sensor_fps;
+
+// OSD lock
+extern pthread_mutex_t osd_lock;
 
 /* ========================================================================== */
 /*                          函数实现区                                        */
 /* ========================================================================== */
+
+static int _venc_error(VENC_CHN_ATTR_S *VENC_ChnAttr)
+{
+	// PRINT_ERROR("VENC_ChnAttr->stGopAttr.u32Gop %d\n", VENC_ChnAttr->stGopAttr.u32Gop);
+	// PRINT_ERROR("VENC_ChnAttr->stGopAttr.u32DummyIGop %d\n", VENC_ChnAttr->stGopAttr.u32DummyIGop);
+	// PRINT_ERROR("VENC_ChnAttr->stGopAttr.u32DummyIOffset %d\n", VENC_ChnAttr->stGopAttr.u32DummyIOffset);
+	// PRINT_ERROR("VENC_ChnAttr->stGopAttr.u32DummyIType %d\n", VENC_ChnAttr->stGopAttr.u32DummyIType);
+
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.enType %d\n", VENC_ChnAttr->stVeAttr.enType);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.enProfile %d\n", VENC_ChnAttr->stVeAttr.enProfile);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.u32StrmBufSize %d\n", VENC_ChnAttr->stVeAttr.u32StrmBufSize);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.u32MaxPicWidth %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.u32MaxPicWidth);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.u32MaxPicHeight %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.u32MaxPicHeight);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.enPixelFormat %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.enPixelFormat);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.u32PicWidth %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.u32PicWidth);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.u32PicHeight %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.u32PicHeight);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[0]%d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[0]);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[1] %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[1]);
+	PRINT_ERROR("VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[2] %d\n", VENC_ChnAttr->stVeAttr.stInputPicAttr.au32Stride[2]);
+
+	PRINT_ERROR("VENC_ChnAttr->stRcAttr.enRcMode %d\n", VENC_ChnAttr->stRcAttr.enRcMode);
+	PRINT_ERROR("VENC_ChnAttr->stRcAttr.u32FrmRateNum %d\n", VENC_ChnAttr->stRcAttr.u32FrmRateNum);
+	PRINT_ERROR("VENC_ChnAttr->stRcAttr.u32FrmRateDenom %d\n", VENC_ChnAttr->stRcAttr.u32FrmRateDenom);
+
+	switch (VENC_ChnAttr->stRcAttr.enRcMode)
+	{
+		case (VENC_RC_MODE_CBR):
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrCbr.u32StatTime %d\n", VENC_ChnAttr->stRcAttr.stAttrCbr.u32StatTime);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrCbr.u32TargetBitRate %d\n", VENC_ChnAttr->stRcAttr.stAttrCbr.u32TargetBitRate);
+			break;
+		case (VENC_RC_MODE_QVBR):
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxBitRate %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxBitRate);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32StatTime %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32StatTime);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxIQp %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxIQp);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MinIQp %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MinIQp);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxPQp %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MaxPQp);
+			PRINT_ERROR("VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MinPQp %d\n", VENC_ChnAttr->stRcAttr.stAttrQVbr.u32MinPQp);
+			break;
+		default:
+			PRINT_ERROR("unknown enRcMode %d\n", VENC_ChnAttr->stRcAttr.enRcMode);
+			return -1;
+	}
+
+	return 0;
+}
+
+/// 根据通道号获取对应的QP表
+static const CaptureImageQuality_t* _get_qp_table(int VencChn)
+{
+	return (VencChn == CHL_2END_T) ? CHL_2END_T_CaptureQtTable : CaptureQtTable;
+}
+
+/// 填充CBR模式的QP参数
+static void _fill_rc_cbr_qp(VENC_CHN_ATTR_S *pAttr, int qt_level, int VencChn)
+{
+	const CaptureImageQuality_t *qp_table = _get_qp_table(VencChn);
+	pAttr->stRcAttr.stAttrCbr.u32MinIQp = qp_table[qt_level - 1].IminQP;
+	pAttr->stRcAttr.stAttrCbr.u32MaxIQp = qp_table[qt_level - 1].ImaxQP;
+	pAttr->stRcAttr.stAttrCbr.u32MinPQp = qp_table[qt_level - 1].PminQP;
+	pAttr->stRcAttr.stAttrCbr.u32MaxPQp = qp_table[qt_level - 1].PmaxQP;
+}
+
+/// 填充QVBR模式的QP参数
+static void _fill_rc_qvbr_qp(VENC_CHN_ATTR_S *pAttr, int qt_level, int VencChn)
+{
+	const CaptureImageQuality_t *qp_table = _get_qp_table(VencChn);
+	pAttr->stRcAttr.stAttrQVbr.u32MinIQp = qp_table[qt_level - 1].IminQP;
+	pAttr->stRcAttr.stAttrQVbr.u32MaxIQp = qp_table[qt_level - 1].ImaxQP;
+	pAttr->stRcAttr.stAttrQVbr.u32MinPQp = qp_table[qt_level - 1].PminQP;
+	pAttr->stRcAttr.stAttrQVbr.u32MaxPQp = qp_table[qt_level - 1].PmaxQP;
+}
+
+/// 填充VENC通道属性的RC参数
+static int _fill_venc_rc_attr(VENC_CHN_ATTR_S *pAttr, channel_info *info,
+                               int VencChn, unsigned int MaxBitRate)
+{
+	switch (pAttr->stRcAttr.enRcMode)
+	{
+		case VENC_RC_MODE_CBR:
+			pAttr->stRcAttr.stAttrCbr.u32StatTime = 1;
+			pAttr->stRcAttr.stAttrCbr.u32TargetBitRate = MIN(info->bps, MaxBitRate);
+			_fill_rc_cbr_qp(pAttr, info->qt_level, VencChn);
+			break;
+
+		case VENC_RC_MODE_QVBR:
+			pAttr->stRcAttr.stAttrQVbr.u32StatTime = 1;
+			pAttr->stRcAttr.stAttrQVbr.u32MaxBitRate = MIN(info->bps, MaxBitRate);
+			pAttr->stRcAttr.stAttrQVbr.s32ChangePos = 85;
+			_fill_rc_qvbr_qp(pAttr, info->qt_level, VencChn);
+			pAttr->stRcAttr.stAttrQVbr.s32MinBitratePos = 32;
+			if (PT_H265 == pAttr->stVeAttr.enType) {
+				pAttr->stRcAttr.stAttrQVbr.s32BestQuality  = 50;
+				pAttr->stRcAttr.stAttrQVbr.s32WorstQuality = 60;
+			} else {
+				pAttr->stRcAttr.stAttrQVbr.s32BestQuality  = 60;
+				pAttr->stRcAttr.stAttrQVbr.s32WorstQuality = 70;
+			}
+			break;
+
+		default:
+			PRINT_ERROR("unknown enRcMode %d\n", pAttr->stRcAttr.enRcMode);
+			return -1;
+	}
+	return 0;
+}
 
 /*
  * ===== 初始化接口实现 =====
@@ -403,6 +519,7 @@ int VideoEncoder_SetCodecType(int VencChn, PAYLOAD_TYPE_E codecType, VENC_PROFIL
     if (!adapter) {
         PRINT_ERROR("Platform adapter not initialized\n");
         return VENC_FAILURE;
+   	}
 
     if (VencChn < 0 || VencChn >= MAX_VENC_CHN_NUM) {
         PRINT_ERROR("Invalid VENC channel %d\n", VencChn);
@@ -461,7 +578,6 @@ int VideoEncoder_SetCodecType(int VencChn, PAYLOAD_TYPE_E codecType, VENC_PROFIL
 
     PRINT_INFO("Successfully changed VENC channel %d codec type\n", VencChn);
     return VENC_SUCCESS;
-}
 }
 
 /**
@@ -664,17 +780,20 @@ int VideoEncoder_GetStreamInfo(int VencChn, VENC_STREAM_S* pStream)
  * ===== 旋转/镜像实现 =====
  */
 
-int VideoEncoder_SetRotate(int VencChn, int enRotation)
+int VideoEncoder_SetRotate(int channel, int Rotate)
 {
-    PlatformAdapter *adapter = GetPlatformAdapter();
+	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+	pCaptureDevice->Rotate = Rotate;
+	int ret = 0;
+	PlatformAdapter *adapter = GetPlatformAdapter();
 
     if (!adapter) {
         PRINT_ERROR("Platform adapter not initialized\n");
         return VENC_FAILURE;
     }
 
-    if (VencChn < 0 || VencChn >= MAX_VENC_CHN_NUM) {
-        PRINT_ERROR("Invalid VENC channel %d\n", VencChn);
+    if (channel < 0 || channel >= MAX_VENC_CHN_NUM) {
+        PRINT_ERROR("Invalid VENC channel %d\n", channel);
         return VENC_FAILURE;
     }
 
@@ -683,13 +802,27 @@ int VideoEncoder_SetRotate(int VencChn, int enRotation)
         return VENC_FAILURE;
     }
 
-    PRINT_INFO("Setting VENC channel %d rotation to %d\n", VencChn, enRotation);
+	for(int i = CHL_MAIN_T; i < CHL_FUNCTION_NUM; i++)
+	{
+		for (int ichannel = 0; ichannel < pCaptureDevice->EncDevice[channel].StreamCount; ichannel++)
+		{
+			if (pCaptureDevice->EncDevice[channel].StreamDevice[ichannel].CapChn == i)
+			{
+				ret = adapter->venc_set_rotate(ichannel, Rotate);
+				if(ret != 0)
+				{
+					PRINT_ERROR("VideoEncoder_SetRotate failed for channel %d\n", ichannel);
+					return ret;
+				}
+			}
+		}
+	}
 
-    return adapter->venc_set_rotate(VencChn, enRotation);
+	return ret;
 }
 
 /*
- * ===== Additional interfaces (Phase 3) =====
+ * ===== Additional interfaces =====
  */
 
 int VideoEncoder_SetChannelAttr(int VencChn, VENC_CHN_ATTR_S* pAttr)
@@ -828,90 +961,6 @@ int VideoEncoder_SetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam)
     PRINT_INFO("Setting VENC channel %d RC parameters\n", VencChn);
 
     return adapter->venc_set_rc_param(VencChn, pRcParam);
-}
-
-// ============================================================================
-// External declarations for UpdateChannelConfig
-// ============================================================================
-
-// QP tables from video.c
-extern CaptureImageQuality_t CaptureQtTable[6];
-extern CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6];
-
-// Sensor frame rate
-extern unsigned int sensor_fps;
-
-// OSD lock
-extern pthread_mutex_t osd_lock;
-
-// OSD/LOGO functions from video.c
-extern void _set_title(void);
-extern void _set_cover(void);
-extern void _set_logo(void);
-extern void _venc_error(VENC_CHN_ATTR_S *pAttr);
-
-// ============================================================================
-// Helper functions for VideoEncoder_UpdateChannelConfig
-// ============================================================================
-
-/// 根据通道号获取对应的QP表
-static const CaptureImageQuality_t* _get_qp_table(int VencChn)
-{
-	return (VencChn == CHL_2END_T) ? CHL_2END_T_CaptureQtTable : CaptureQtTable;
-}
-
-/// 填充CBR模式的QP参数
-static void _fill_rc_cbr_qp(VENC_CHN_ATTR_S *pAttr, int qt_level, int VencChn)
-{
-	const CaptureImageQuality_t *qp_table = _get_qp_table(VencChn);
-	pAttr->stRcAttr.stAttrCbr.u32MinIQp = qp_table[qt_level - 1].IminQP;
-	pAttr->stRcAttr.stAttrCbr.u32MaxIQp = qp_table[qt_level - 1].ImaxQP;
-	pAttr->stRcAttr.stAttrCbr.u32MinPQp = qp_table[qt_level - 1].PminQP;
-	pAttr->stRcAttr.stAttrCbr.u32MaxPQp = qp_table[qt_level - 1].PmaxQP;
-}
-
-/// 填充QVBR模式的QP参数
-static void _fill_rc_qvbr_qp(VENC_CHN_ATTR_S *pAttr, int qt_level, int VencChn)
-{
-	const CaptureImageQuality_t *qp_table = _get_qp_table(VencChn);
-	pAttr->stRcAttr.stAttrQVbr.u32MinIQp = qp_table[qt_level - 1].IminQP;
-	pAttr->stRcAttr.stAttrQVbr.u32MaxIQp = qp_table[qt_level - 1].ImaxQP;
-	pAttr->stRcAttr.stAttrQVbr.u32MinPQp = qp_table[qt_level - 1].PminQP;
-	pAttr->stRcAttr.stAttrQVbr.u32MaxPQp = qp_table[qt_level - 1].PmaxQP;
-}
-
-/// 填充VENC通道属性的RC参数
-static int _fill_venc_rc_attr(VENC_CHN_ATTR_S *pAttr, channel_info *info,
-                               int VencChn, unsigned int MaxBitRate)
-{
-	switch (pAttr->stRcAttr.enRcMode)
-	{
-		case VENC_RC_MODE_CBR:
-			pAttr->stRcAttr.stAttrCbr.u32StatTime = 1;
-			pAttr->stRcAttr.stAttrCbr.u32TargetBitRate = MIN(info->bps, MaxBitRate);
-			_fill_rc_cbr_qp(pAttr, info->qt_level, VencChn);
-			break;
-
-		case VENC_RC_MODE_QVBR:
-			pAttr->stRcAttr.stAttrQVbr.u32StatTime = 1;
-			pAttr->stRcAttr.stAttrQVbr.u32MaxBitRate = MIN(info->bps, MaxBitRate);
-			pAttr->stRcAttr.stAttrQVbr.s32ChangePos = 85;
-			_fill_rc_qvbr_qp(pAttr, info->qt_level, VencChn);
-			pAttr->stRcAttr.stAttrQVbr.s32MinBitratePos = 32;
-			if (PT_H265 == pAttr->stVeAttr.enType) {
-				pAttr->stRcAttr.stAttrQVbr.s32BestQuality  = 50;
-				pAttr->stRcAttr.stAttrQVbr.s32WorstQuality = 60;
-			} else {
-				pAttr->stRcAttr.stAttrQVbr.s32BestQuality  = 60;
-				pAttr->stRcAttr.stAttrQVbr.s32WorstQuality = 70;
-			}
-			break;
-
-		default:
-			PRINT_ERROR("unknown enRcMode %d\n", pAttr->stRcAttr.enRcMode);
-			return -1;
-	}
-	return 0;
 }
 
 int VideoEncoder_UpdateChannelConfig(int channel, DWORD dwType, channel_info *info)
@@ -1060,9 +1109,9 @@ int VideoEncoder_UpdateChannelConfig(int channel, DWORD dwType, channel_info *in
 		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width = info->width;
 		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height = info->height;
 
-		_set_title();
-		_set_cover();
-		_set_logo();
+		VideoOSD_SetTitleRegion();
+		VideoVPS_SetCoverRegion();
+		VideoOSD_SetLogoRegion();
 	}
 
 
