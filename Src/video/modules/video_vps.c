@@ -20,6 +20,7 @@
 #include "../../Include/APIs/TdCommon.h"
 #include "../../Include/APIs/Video.h"
 #include "../../Include/APIs/Capture.h"
+#include "../modules/include/video_osd.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
 
@@ -330,6 +331,200 @@ int VideoVPS_SetCover(int channel, int index, VIDEO_COVER_PARAM *pParam)
     pRegionDevice->COVER_PARAM[index].enable = pParam->enable;
 
     return 0;
+}
+
+/**
+ * @brief Set VPS input frame rate
+ *
+ * This function sets the VPS input frame rate with special handling for 12fps.
+ * For 12fps, it uses FpsDenom=2 and InFps=25 to achieve 12.5fps ≈ 12fps integer rate.
+ *
+ * @param channel Video channel index
+ * @param FrmRate Target frame rate (e.g., 12, 25, 30)
+ * @return 0 on success, FAILED on error
+ */
+int VideoVPS_SetInputFrameRate(int channel, unsigned int FrmRate)
+{
+    int ret = FAILED;
+    VPS_GRP VpsGrp = 0;
+    VPS_GRP_ATTR_S stGrpAttr;
+    VPS_MOD_PARAM_S stGrpModParam;
+    PlatformAdapter* adapter = GetPlatformAdapter();
+
+    if (!adapter) {
+        PRINT_ERROR("VideoVPS_SetInputFrameRate: Platform adapter not initialized\n");
+        return FAILED;
+    }
+
+    memset(&stGrpAttr, 0, sizeof(VPS_GRP_ATTR_S));
+    memset(&stGrpModParam, 0, sizeof(VPS_MOD_PARAM_S));
+
+    if (0 == FrmRate) {
+        PRINT_ERROR("VideoVPS_SetInputFrameRate: FrmRate %d invalid\n", FrmRate);
+        return ret;
+    }
+
+    /* Step 1: Get VPS module parameters via adapter */
+    ret = adapter->vps_get_mod_param(VpsGrp, &stGrpModParam);
+    if (RETURN_OK != ret) {
+        PRINT_ERROR("vps_get_mod_param failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 2: Set timestamp denominator based on frame rate */
+    if (12 == FrmRate) {
+        /* For PAL (25fps sensor), reduce to 12fps by setting denominator=2
+         * This makes output fps = 25/2 = 12.5 ≈ 12fps (integer) */
+        stGrpModParam.u32FpsDenom = 2;
+    }
+    else {
+        /* Normal frame rates use denominator=1 */
+        stGrpModParam.u32FpsDenom = 1;
+    }
+
+    /* Step 3: Apply module parameters via adapter */
+    ret = adapter->vps_set_mod_param(VpsGrp, &stGrpModParam);
+    if (RETURN_OK != ret) {
+        PRINT_ERROR("vps_set_mod_param failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 4: Get VPS group attributes via adapter */
+    ret = adapter->vps_get_grp_attr(VpsGrp, &stGrpAttr);
+    if (RETURN_OK != ret) {
+        PRINT_ERROR("vps_get_grp_attr failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 5: Set input frame rate */
+    if (12 == FrmRate) {
+        /* For 12fps, keep sensor at 25fps (will be divided by denominator=2) */
+        stGrpAttr.u32InFps = 25;
+    }
+    else {
+        /* Normal frame rates: set directly */
+        stGrpAttr.u32InFps = FrmRate;
+    }
+
+    /* Step 6: Apply group attributes via adapter */
+    ret = adapter->vps_set_grp_attr(VpsGrp, &stGrpAttr);
+    if (RETURN_OK != ret) {
+        PRINT_ERROR("vps_set_grp_attr failed with %#x\n", ret);
+        return ret;
+    }
+
+    return ret;
+}
+
+/**
+ * @brief Set VPS output parameters (resolution, frame rate, encoding type)
+ *
+ * This function sets VPS channel output parameters. When resolution changes,
+ * it automatically destroys and recreates OSD/Logo regions.
+ *
+ * @param channel Video channel index
+ * @param dwType Stream type (CHL_MAIN_T, CHL_2END_T)
+ * @param ChnAttr Output attributes (width, height, fps, payload type)
+ * @return 0 on success, FAILED on error
+ */
+int VideoVPS_SetOutputParam(int channel, DWORD dwType, VPS_CHN_OUT_ATTR *ChnAttr)
+{
+    int EncCnt = 0;
+    int ret = FAILED;
+    VPS_GRP VpsGrp = 0;
+    unsigned int VencChn = 0;
+    VPS_CHN_ATTR_S VPS_ChnAttr;
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+    PlatformAdapter* adapter = GetPlatformAdapter();
+    extern unsigned int sensor_fps;
+
+    if (!adapter) {
+        PRINT_ERROR("VideoVPS_SetOutputParam: Platform adapter not initialized\n");
+        return FAILED;
+    }
+
+    memset(&VPS_ChnAttr, 0, sizeof(VPS_CHN_ATTR_S));
+
+    /* Video input channel count */
+    EncCnt = pCaptureDevice->EncCount;
+
+    /* Validate parameters */
+    if (NULL == ChnAttr || channel >= EncCnt) {
+        PRINT_ERROR("VideoVPS_SetOutputParam: channel %d parameter error\n", channel);
+        return ret;
+    }
+
+    if (0 == ChnAttr->OutFps) {
+        PRINT_ERROR("VideoVPS_SetOutputParam: channel %d OutFps %d invalid\n",
+                    channel, ChnAttr->OutFps);
+        return ret;
+    }
+
+    /* Validate supported stream type */
+    if (!((pCaptureDevice->EncDevice[channel].SupportStream >> dwType) & 0x01)) {
+        PRINT_ERROR("VideoVPS_SetOutputParam: dwType %d not supported\n", dwType);
+        return ret;
+    }
+
+    /* Get encoder channel number for this stream type */
+    for (int i = 0; i < pCaptureDevice->EncDevice[channel].StreamCount; i++) {
+        if (dwType == pCaptureDevice->EncDevice[channel].StreamDevice[i].CapChn) {
+            VencChn = i;
+        }
+    }
+
+    /* Step 1: Disable VPS channel via adapter */
+    ret = adapter->vps_disable_chn(VpsGrp, VencChn);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("vps_disable_chn failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 2: If resolution changed, destroy OSD/Logo (will be recreated later) */
+    if (ChnAttr->OutHeight != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height ||
+        ChnAttr->OutWidth != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width)
+    {
+        VideoOSD_Destroy();
+        VideoOSD_DestroyLogo();
+    }
+
+    /* Step 3: Get current VPS channel attributes via adapter */
+    ret = adapter->vps_get_chn_attr(VpsGrp, VencChn, &VPS_ChnAttr);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("vps_get_chn_attr failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 4: Update channel attributes */
+    VPS_ChnAttr.u32OutHeight = ChnAttr->OutHeight;
+    VPS_ChnAttr.u32OutWidth = ChnAttr->OutWidth;
+    VPS_ChnAttr.stEncAttr.u32YStride = VPS_ChnAttr.u32OutWidth;
+    VPS_ChnAttr.stEncAttr.u32CStride = VPS_ChnAttr.u32OutWidth;
+    VPS_ChnAttr.stEncAttr.enType = ChnAttr->EnPayLoad;
+
+    /* Step 5: Set output frame rate (limited by sensor fps) */
+    VPS_ChnAttr.stEncAttr.u32OutFps = (sensor_fps > ChnAttr->OutFps) ? ChnAttr->OutFps : sensor_fps;
+
+    /* Special handling for 12fps: multiply by 2 for timestamp calculation */
+    if (12 == sensor_fps) {
+        VPS_ChnAttr.stEncAttr.u32OutFps *= 2;
+    }
+
+    /* Step 6: Apply channel attributes via adapter */
+    ret = adapter->vps_set_chn_attr(VpsGrp, VencChn, &VPS_ChnAttr);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("vps_set_chn_attr failed with %#x\n", ret);
+        return ret;
+    }
+
+    /* Step 7: Re-enable VPS channel via adapter */
+    ret = adapter->vps_enable_chn(VpsGrp, VencChn);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("vps_enable_chn failed with %#x\n", ret);
+        return ret;
+    }
+
+    return ret;
 }
 
 
