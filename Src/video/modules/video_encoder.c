@@ -29,19 +29,32 @@
 /* ========================================================================== */
 /*                          内部函数声明区                                    */
 /* ========================================================================== */
+static VENC_PROFILE_E H264Profile_Table[]={
+										VENC_H264_BASE_LINE_PROFILE,
+										VENC_H264_MAIN_PROFILE,
+										VENC_H264_HIGH_PROFILE
+										};
+
+static VENC_PROFILE_E H265Profile_Table[]={VENC_H265_MAIN_PROFILE};
 
 /* ========================================================================== */
 /*                          全局变量定义区                                    */
 /* ========================================================================== */
+
+/* 已删除的extern声明（因改为同步应用模式）：
+ * - extern BOOL ChangeChnParam[VENC_MAX_CHN_NUM];
+ * - extern channel_info ChnParam[VENC_MAX_CHN_NUM];
+ * - extern pthread_rwlock_t ChangeParamLock;
+ */
+
+extern SIZE_S imageSize[2][VIDEO_SIZE_NR];
+
 // QP tables from video.c
 extern CaptureImageQuality_t CaptureQtTable[6];
 extern CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6];
 
 // Sensor frame rate
 extern unsigned int sensor_fps;
-
-// OSD lock
-extern pthread_mutex_t osd_lock;
 
 /* ========================================================================== */
 /*                          函数实现区                                        */
@@ -152,6 +165,391 @@ static int _fill_venc_rc_attr(VENC_CHN_ATTR_S *pAttr, channel_info *info,
 	return 0;
 }
 
+static int _get_pic_size(video_size_t enPicSize, SIZE_S* pstSize)
+{
+	if (enPicSize >= VIDEO_SIZE_NR || enPicSize < 0)
+	{
+		return FAILED;
+	}
+
+	VideoInDevice_p pVideoInDevice = &GlobalDevice.VideoInDevice;
+	int dstFps = pVideoInDevice->VDInfo[0].ViDstFps;
+	int vstd = VIDEO_STANDARD_PAL;
+	if(25 == dstFps)
+	{
+		vstd = VIDEO_STANDARD_PAL;
+	}
+	else if(30 == dstFps)
+	{
+		vstd = VIDEO_STANDARD_NTSC;
+	}
+
+	pstSize->u32Width = imageSize[vstd][enPicSize].u32Width;
+	pstSize->u32Height = imageSize[vstd][enPicSize].u32Height;
+	if(pstSize->u32Width == 0 && pstSize->u32Height == 0)
+	{
+		return FAILED;
+	}
+	return SUCCESS;
+}
+
+static int _get_pic_type(VIDEO_FORMAT * pFormat,struct channel_info *info)
+{
+	switch(pFormat->Compression)
+	{
+		case VIDEO_COMP_H264:
+		{
+			info->enc_type = PT_H264;
+			info->profile = H264Profile_Table[pFormat->profile];
+			switch(pFormat->BitRateControl)
+			{
+				case VIDEO_BRC_CBR:
+					info->rc_type = VENC_RC_MODE_CBR;
+					info->bps = info->bps*4/5;
+					break;
+				case VIDEO_BRC_VBR:
+					info->rc_type = VENC_RC_MODE_QVBR;
+					info->qt_level = pFormat->ImageQuality;
+					break;
+				default:
+					PRINT_ERROR("H264 enRcMode (%d) not support!\n",pFormat->BitRateControl);
+					return -1;
+			}
+			break;
+		}
+		
+		case VIDEO_COMP_H265:
+		{
+			info->enc_type = PT_H265;
+			info->profile = H265Profile_Table[pFormat->profile];
+			switch(pFormat->BitRateControl)
+			{
+				case VIDEO_BRC_CBR:
+					info->rc_type = VENC_RC_MODE_CBR;
+					info->bps = info->bps*4/5;
+					break;
+				case VIDEO_BRC_VBR:
+					info->rc_type = VENC_RC_MODE_QVBR;
+					info->qt_level = pFormat->ImageQuality;
+					break;
+				default:
+					PRINT_ERROR("H265 enRcMode (%d) not support!\n",pFormat->BitRateControl);
+					return -1;
+			}
+			break;
+		}
+		
+		case VIDEO_COMP_MJPG:
+		{
+			//info->enc_type = FH_MJPEG;
+			switch(pFormat->BitRateControl)
+			{
+				case VIDEO_BRC_CBR:
+					//info->rc_type = FH_RC_MJPEG_CBR;
+					break;
+				case VIDEO_BRC_VBR:
+					//info->rc_type = FH_RC_MJPEG_VBR;
+					break;
+				default:
+					PRINT_ERROR("MJPEG enRcMode (%d) not support!\n",pFormat->BitRateControl);
+					return -1;
+			}
+			break;
+		}
+
+		case VIDEO_COMP_JPEG:
+			//info->enc_type = FH_JPEG;
+			break;
+		default:
+			PRINT_ERROR("enType (%d) not support!\n",pFormat->Compression);
+			return -1;	
+	}
+
+	return 0;
+}
+
+/**
+ * @brief 查找VENC通道号
+ */
+static int _find_venc_channel(int channel, DWORD dwType, unsigned int *pVencChn)
+{
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+
+    if (channel >= pCaptureDevice->EncCount) {
+        PRINT_ERROR("Invalid channel %d\n", channel);
+        return -1;
+    }
+
+    if (!((pCaptureDevice->EncDevice[channel].SupportStream >> dwType) & 0x01)) {
+        PRINT_ERROR("Stream type %d not supported\n", dwType);
+        return -1;
+    }
+
+    for (int i = 0; i < pCaptureDevice->EncDevice[channel].StreamCount; i++) {
+        if (pCaptureDevice->EncDevice[channel].StreamDevice[i].CapChn == dwType) {
+            *pVencChn = i;
+            return 0;
+        }
+    }
+
+    PRINT_ERROR("VENC channel not found for dwType=%d\n", dwType);
+    return -1;
+}
+
+/**
+ * @brief 检测分辨率是否变化
+ */
+static BOOL _is_resolution_changed(int channel, int VencChn, channel_info *info)
+{
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+
+    return (info->width != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width ||
+            info->height != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height);
+}
+
+/**
+ * @brief 重建OSD/Logo/Cover（分辨率变化时）
+ */
+static void _rebuild_overlays(int channel, int VencChn, channel_info *info)
+{
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+
+    // 先保存分辨率配置（OSD/Logo/Cover模块需要读取）
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width = info->width;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height = info->height;
+
+    // 重建所有叠加层
+    VideoOSD_SetTitleRegion();
+    VideoVPS_SetCoverRegion();
+    VideoOSD_SetLogoRegion();
+}
+
+/**
+ * @brief 设置主码流最大I帧大小（512KB）
+ */
+static int _set_main_stream_max_i_frame_size(int VencChn)
+{
+    VENC_RC_PARAM_S stRcParam;
+    int ret;
+
+    memset(&stRcParam, 0, sizeof(VENC_RC_PARAM_S));
+    ret = VideoEncoder_GetRcParam(VencChn, &stRcParam);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_GetRcParam\n", ret);
+        return ret;
+    }
+
+    stRcParam.stRcParamH26x.s32MaxISize = 512 * 1024;
+
+    ret = VideoEncoder_SetRcParam(VencChn, &stRcParam);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_SetRcParam\n", ret);
+        return ret;
+    }
+
+    PRINT_INFO("Set main stream max I frame size to 512KB\n");
+    return RETURN_OK;
+}
+
+/**
+ * @brief 保存编码配置到GlobalDevice
+ */
+static void _save_channel_config(int channel, int VencChn, channel_info *info)
+{
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.bps = info->bps;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.rc_type = info->rc_type;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.profile = info->profile;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.qt_level = info->qt_level;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.enc_type = info->enc_type;
+    pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.frame_count = info->frame_count;
+}
+
+/**
+ * @brief 同步JPEG通道参数（跟随子码流）
+ */
+static int _sync_jpeg_channel(int channel, int VencChn, channel_info *subStreamInfo)
+{
+    const int jpeg_chn = STREAM_TYPE_THI;
+    const int jpeg_fps = 4;
+    VENC_CHN_ATTR_S jpegAttr;
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+    int actualJpegFps;
+    int ret;
+
+    // Stop JPEG channel
+    ret = VideoEncoder_Stop(jpeg_chn);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_Stop jpeg channel\n", ret);
+        return ret;
+    }
+
+    // Get current JPEG attributes
+    ret = VideoEncoder_GetChannelAttr(jpeg_chn, &jpegAttr);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_GetChannelAttr jpeg\n", ret);
+        VideoEncoder_Start(jpeg_chn);  // Try recover
+        return ret;
+    }
+
+    // Sync resolution and frame rate with sub stream
+    jpegAttr.stRcAttr.u32FrmRateNum = (sensor_fps > subStreamInfo->frame_count) ? subStreamInfo->frame_count : sensor_fps;
+    jpegAttr.stVeAttr.stInputPicAttr.u32PicWidth = subStreamInfo->width;
+    jpegAttr.stVeAttr.stInputPicAttr.u32PicHeight = subStreamInfo->height;
+    jpegAttr.stVeAttr.stInputPicAttr.au32Stride[0] = subStreamInfo->width;
+    jpegAttr.stVeAttr.stInputPicAttr.au32Stride[1] = subStreamInfo->width;
+    jpegAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
+
+    ret = VideoEncoder_SetChannelAttr(jpeg_chn, &jpegAttr);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_SetChannelAttr jpeg\n", ret);
+        VideoEncoder_Start(jpeg_chn);  // Try recover
+        return ret;
+    }
+
+    // Set output frame rate (4fps or sub stream fps, whichever is lower)
+    actualJpegFps = (jpeg_fps > subStreamInfo->frame_count) ? subStreamInfo->frame_count : jpeg_fps;
+    ret = VideoEncoder_SetOutFrameRate(jpeg_chn, actualJpegFps);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_SetOutFrameRate jpeg\n", ret);
+        VideoEncoder_Start(jpeg_chn);  // Try recover
+        return ret;
+    }
+
+    // Start JPEG channel
+    ret = VideoEncoder_Start(jpeg_chn);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_Start jpeg\n", ret);
+        return ret;
+    }
+
+    // Save JPEG channel config
+    pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_width = subStreamInfo->width;
+    pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_height = subStreamInfo->height;
+
+    PRINT_INFO("JPEG channel synced with sub stream (%dx%d, %dfps)\n",
+               subStreamInfo->width, subStreamInfo->height, actualJpegFps);
+    return RETURN_OK;
+}
+
+/**
+ * @brief 核心函数：应用VENC编码参数
+ * @param channel 设备通道号
+ * @param VencChn VENC通道号
+ * @param info 编码配置
+ * @param pResolutionChanged [out] 分辨率是否变化
+ * @return 0成功，<0失败
+ *
+ * 职责：
+ * - 条件销毁通道（编码类型/Profile变化）
+ * - 构造VENC属性
+ * - Create或Set通道
+ * - 主码流特殊处理（512KB I帧）
+ * - 检测分辨率变化
+ *
+ * 不做：
+ * - 不重建OSD/Logo（由调用者决定）
+ * - 不处理JPEG联动（由调用者决定）
+ * - 不保存配置（由调用者决定）
+ */
+static int _apply_venc_config(int channel, int VencChn, channel_info *info, BOOL *pResolutionChanged)
+{
+    int ret;
+    unsigned int MaxBitRate;
+    BOOL needRecreate = FALSE;
+    VENC_CHN_ATTR_S vencAttr;
+    SensorDevice_p pSensorDevice = &GlobalDevice.SensorDevice;
+
+    memset(&vencAttr, 0, sizeof(VENC_CHN_ATTR_S));
+
+    // Get current attributes
+    ret = VideoEncoder_GetChannelAttr(VencChn, &vencAttr);
+    if (ret != RETURN_OK) {
+        PRINT_ERROR("Error(%d): VideoEncoder_GetChannelAttr\n", ret);
+        return -1;
+    }
+
+    // Check if need destroy & recreate (codec type or profile changed)
+    if (vencAttr.stVeAttr.enType != info->enc_type || vencAttr.stVeAttr.enProfile != info->profile)
+    {
+        needRecreate = TRUE;
+
+        // Destroy channel
+        ret = VideoEncoder_DestroyChannel(VencChn);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("Error(%d): VideoEncoder_DestroyChannel\n", ret);
+            return -1;
+        }
+
+        // Disable stream check
+        ret = VideoEncoder_SetStreamCheck(VencChn, VENC_STREAM_CHECK_OFF);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("Error(%d): VideoEncoder_SetStreamCheck\n", ret);
+            return -1;
+        }
+
+        // Set larger buffer size (avoid recreate when resolution increases)
+        if (VencChn == STREAM_TYPE_SEC) {
+            vencAttr.stVeAttr.u32StrmBufSize = 245761;
+        } else {
+            vencAttr.stVeAttr.u32StrmBufSize = pSensorDevice->MaxHeight * pSensorDevice->MaxWidth / 2;
+        }
+    }
+
+    // Update all attributes
+    vencAttr.stVeAttr.enType = info->enc_type;
+    vencAttr.stVeAttr.enProfile = info->profile;
+    vencAttr.stVeAttr.stInputPicAttr.u32PicWidth = info->width;
+    vencAttr.stVeAttr.stInputPicAttr.u32PicHeight = info->height;
+    vencAttr.stVeAttr.stInputPicAttr.au32Stride[0] = info->width;
+    vencAttr.stVeAttr.stInputPicAttr.au32Stride[1] = info->width;
+    vencAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
+
+    // Update RC config
+    vencAttr.stRcAttr.enRcMode = info->rc_type;
+    vencAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
+    vencAttr.stGopAttr.stGopNomalAttr.u32Gop = MAX(vencAttr.stRcAttr.u32FrmRateNum, 1) * 2;
+
+    MaxBitRate = vencAttr.stRcAttr.u32FrmRateNum / vencAttr.stRcAttr.u32FrmRateDenom
+                 * info->width * info->height * 8 * 3 / 2000;
+
+    ret = _fill_venc_rc_attr(&vencAttr, info, VencChn, MaxBitRate);
+    if (ret != 0) {
+        return ret;
+    }
+
+    // Create or Set channel
+    if (needRecreate) {
+        ret = VideoEncoder_CreateChannel(VencChn, &vencAttr);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("Error(%d): VideoEncoder_CreateChannel\n", ret);
+            _venc_error(&vencAttr);
+            return -1;
+        }
+    } else {
+        ret = VideoEncoder_SetChannelAttr(VencChn, &vencAttr);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("Error(%d): VideoEncoder_SetChannelAttr\n", ret);
+            return -1;
+        }
+    }
+
+    // Main stream special handling (set max I frame size)
+    if (VencChn == STREAM_TYPE_FIR) {
+        ret = _set_main_stream_max_i_frame_size(VencChn);
+        if (ret != RETURN_OK) {
+            return ret;
+        }
+    }
+
+    // Check if resolution changed
+    *pResolutionChanged = _is_resolution_changed(channel, VencChn, info);
+
+    return RETURN_OK;
+}
+
+
 /*
  * ===== 初始化接口实现 =====
  */
@@ -236,6 +634,132 @@ int VideoEncoder_Stop(int VencChn)
 
     return adapter->venc_stop(VencChn);
 }
+
+int VideoEncoder_SetFormat(int channel, DWORD dwType, VIDEO_FORMAT * pFormat)
+{
+    int i = 0;
+    int ret = -1;
+    int EncCnt = 0;
+    struct channel_info info;
+    SIZE_S pstSize;
+    unsigned int VencChn = 0;
+    VPS_CHN_OUT_ATTR vpsAttr;
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+    VideoInDevice_p pVideoInDevice = &GlobalDevice.VideoInDevice;
+
+    EncCnt = pCaptureDevice->EncCount;
+    memset(&info, 0, sizeof(info));
+    memset(&pstSize, 0, sizeof(SIZE_S));
+    memset(&vpsAttr, 0, sizeof(VPS_CHN_OUT_ATTR));
+
+    if (NULL == pFormat || channel >= EncCnt || 0 == pFormat->FramesPerSecond)
+    {
+        PRINT_ERROR("channel %d parameter FramesPerSecond %d error\n", channel, pFormat->FramesPerSecond);
+        return -1;
+    }
+
+    if (!((pCaptureDevice->EncDevice[channel].SupportStream >> dwType) & 0x01))
+    {
+        PRINT_ERROR("not support dwType = %d\n",dwType);
+        return -1;
+    }
+
+    for (i = 0; i < pCaptureDevice->EncDevice[channel].StreamCount; i++)
+    {
+        if (pCaptureDevice->EncDevice[channel].StreamDevice[i].CapChn == dwType)
+        {
+                VencChn = i;
+        }
+    }
+
+    if (CHL_JPEG_T == dwType)
+    {
+        return 0;
+    }
+
+    ret = _get_pic_size(pFormat->ImageSize, &pstSize);
+    if (ret)
+    {
+        PRINT_ERROR("_get_pic_size failed\n");
+        return -1;
+    }
+
+    if(pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].CapChn == CHL_MAIN_T)
+    {
+        VideoInput_HandleFormatChange(channel, pstSize);
+    }
+
+    if(pVideoInDevice->VDInfo[channel].ViDstFps < pFormat->FramesPerSecond)
+    {
+        pFormat->FramesPerSecond = pVideoInDevice->VDInfo[channel].ViDstFps;
+    }
+
+    ret = _get_pic_type(pFormat, &info);
+    if(ret)
+    {
+        PRINT_ERROR("_get_pic_type failed\n");
+        return -1;
+    }
+
+    // Fill channel_info structure with parsed parameters
+    //info.profile = info.profile;  // Already set by _get_pic_type
+    //info.rc_type = info.rc_type;  // Already set by _get_pic_type
+    info.bps = pFormat->BitRate;
+    //info.enc_type = info.enc_type;  // Already set by _get_pic_type
+    info.width = pstSize.u32Width;
+    info.height = pstSize.u32Height;
+    info.qt_level = pFormat->ImageQuality;
+    info.frame_count = pFormat->FramesPerSecond;
+
+    PRINT_INFO("VencChn %d: profile=%d, rc_type=%d, enc_type=%d\n", VencChn, info.profile, info.rc_type, info.enc_type);
+    PRINT_INFO("VencChn %d: bps=%d, resolution=%dx%d, qt_level=%d, fps=%d\n",
+               VencChn, info.bps, info.width, info.height, info.qt_level, info.frame_count);
+
+    /* Synchronous apply: Stop → SetVPS → SetVENC → Start */
+
+    // Step 1: Stop encoder
+    ret = VideoEncoder_Stop(VencChn);
+    if (ret != RETURN_OK)
+    {
+        PRINT_ERROR("Error(%x): VideoEncoder_Stop channel %d failed\n", ret, VencChn);
+        return -1;
+    }
+
+    // Step 2: Set VPS output parameters (resolution + framerate + codec type)
+    vpsAttr.OutWidth = info.width;
+    vpsAttr.OutHeight = info.height;
+    vpsAttr.OutFps = info.frame_count;
+    vpsAttr.EnPayLoad = info.enc_type;
+
+    ret = VideoVPS_SetOutputParam(channel, VencChn, &vpsAttr);
+    if (ret != RETURN_OK)
+    {
+        PRINT_ERROR("Error(%x): VideoVPS_SetOutputParam channel %d failed\n", ret, VencChn);
+        VideoEncoder_Start(VencChn);  // Try recover
+        return -1;
+    }
+
+    // Step 3: Set VENC encoding parameters (codec, bitrate, QP, RC mode, etc.)
+    ret = VideoEncoder_UpdateChannelConfig(channel, dwType, &info);
+    if (ret != RETURN_OK)
+    {
+        PRINT_ERROR("Error(%x): VideoEncoder_UpdateChannelConfig channel %d failed\n", ret, VencChn);
+        VideoEncoder_Start(VencChn);  // Try recover
+        return -1;
+    }
+
+    // Step 4: Start encoder
+    ret = VideoEncoder_Start(VencChn);
+    if (ret != RETURN_OK)
+    {
+        PRINT_ERROR("Error(%x): VideoEncoder_Start channel %d failed\n", ret, VencChn);
+        return -1;
+    }
+
+    PRINT_INFO("VideoEncoder_SetFormat: VencChn %d applied successfully\n", VencChn);
+    return RETURN_OK;
+}
+
 
 /*
  * ===== 动态参数设置实现 =====
@@ -963,242 +1487,58 @@ int VideoEncoder_SetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam)
     return adapter->venc_set_rc_param(VencChn, pRcParam);
 }
 
+
+
+/**
+ * @brief 更新编码通道的完整配置（Linus式重构版）
+ * @param channel 视频输入通道 (0-based)
+ * @param dwType 码流类型 (CHL_MAIN_T/CHL_2END_T/CHL_JPEG_T)
+ * @param info 编码参数配置
+ * @return 0成功，-1失败
+ */
 int VideoEncoder_UpdateChannelConfig(int channel, DWORD dwType, channel_info *info)
 {
-	int EncCnt = 0;
-	int ret = FALSE;
-	int jpeg_fps = 4;				//设置抓图通道的帧率为4
-	unsigned int VencChn = 0;
-	unsigned int MaxBitRate = 0;
-	BOOL VencVhnDestroy = FALSE;
-	VENC_CHN_ATTR_S VENC_ChnAttr;
-	int jpeg_chn = STREAM_TYPE_THI; // 抓图为第三通道
-	SensorDevice_p pSensorDevice = &GlobalDevice.SensorDevice;
-	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+	unsigned int VencChn;
+	BOOL resolutionChanged = FALSE;
+	int ret;
 
-	memset(&VENC_ChnAttr,0,sizeof(VENC_CHN_ATTR_S));
-
-	EncCnt = pCaptureDevice->EncCount;
-
-	if (NULL == info || channel >= EncCnt)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("channel %d parameter error\n", channel);
-		return ret;
-	}
-
-	if (0 == info->frame_count)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("channel %d parameter FramesPerSecond %d error\n", channel, info->frame_count);
-		return ret;
-	}
-
-	// 校验支持的码流的通道，上层传递通道方式为掩码
-	if (!((pCaptureDevice->EncDevice[channel].SupportStream >> dwType) & 0x01))
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("not support dwType = %d\n", dwType);
-		return ret;
-	}
-
-	// 获取编码通道号
-	for (int i = 0; i < pCaptureDevice->EncDevice[channel].StreamCount; i++)
-	{
-		if (dwType == pCaptureDevice->EncDevice[channel].StreamDevice[i].CapChn)
-		{
-			VencChn = i;
-		}
-	}
-
-	ret = VideoEncoder_GetChannelAttr(VencChn, &VENC_ChnAttr);
-	if (ret != RETURN_OK)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		PRINT_ERROR("Error(%d - %x): VideoEncoder_GetChannelAttr\n", ret, ret);
+	/* Step 1: Validate parameters and find VENC channel */
+	if (info == NULL || info->frame_count == 0) {
+		PRINT_ERROR("Invalid parameters: info=%p, frame_count=%d\n",
+		            info, info ? info->frame_count : 0);
 		return -1;
 	}
 
-	//仅当编码类型和编码等级发生修改时，需要销毁编码通道，其他情况均不销毁
-	if (VENC_ChnAttr.stVeAttr.enType != info->enc_type || VENC_ChnAttr.stVeAttr.enProfile != info->profile)
-	{
-		ret = VideoEncoder_DestroyChannel(VencChn);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_DestroyChannel\n", ret, ret);
-			return -1;
-		}
-
-		//关闭码流校验功能
-		ret = VideoEncoder_SetStreamCheck(VencChn, VENC_STREAM_CHECK_OFF);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_SetStreamCheck\n", ret, ret);
-			return -1;
-		}
-
-		// 设置编码通道的buff大小，仅在销毁重建时才能修改
-		//这边直接将编码通道的buff大小设置为最大，可以规避小分辨率切换到大分辨率需要销毁重建的问题
-		if (STREAM_TYPE_SEC == VencChn)
-		{
-			VENC_ChnAttr.stVeAttr.u32StrmBufSize = 245761;
-		}
-		else
-		{
-			VENC_ChnAttr.stVeAttr.u32StrmBufSize = pSensorDevice->MaxHeight * pSensorDevice->MaxWidth / 2;
-		}
-
-		VencVhnDestroy = TRUE;
+	ret = _find_venc_channel(channel, dwType, &VencChn);
+	if (ret != 0) {
+		return -1;
 	}
 
-
-	VENC_ChnAttr.stVeAttr.enType = info->enc_type;
-	VENC_ChnAttr.stVeAttr.enProfile = info->profile;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicWidth = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicHeight = info->height;
-	VENC_ChnAttr.stRcAttr.enRcMode = info->rc_type;
-	// 这边判断下sensor帧率和用户配置帧率的大小
-	// 若sensor帧率大于用户配置帧率，则以用户配置帧率为准
-	// 若sensor帧率小于用户配置帧率，则以sensor帧率为准
-	VENC_ChnAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
-
-	VENC_ChnAttr.stGopAttr.stGopNomalAttr.u32Gop = MAX(VENC_ChnAttr.stRcAttr.u32FrmRateNum, 1) * 2;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[0] = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[1] = info->width;
-	VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
-	MaxBitRate = VENC_ChnAttr.stRcAttr.u32FrmRateNum / VENC_ChnAttr.stRcAttr.u32FrmRateDenom * info->width * info->height * 8 * 3 / 2000;
-
-	// 使用辅助函数填充RC参数，简化代码
-	ret = _fill_venc_rc_attr(&VENC_ChnAttr, info, VencChn, MaxBitRate);
-	if (ret != 0)
-	{
-		pthread_mutex_unlock(&osd_lock);
-		return ret;
+	/* Step 2: Apply VENC encoding configuration (core logic) */
+	ret = _apply_venc_config(channel, VencChn, info, &resolutionChanged);
+	if (ret != RETURN_OK) {
+		PRINT_ERROR("Error(%d): _apply_venc_config failed\n", ret);
+		return -1;
 	}
 
-	//根据码流是否被销毁来创建/设置编码通道
-	if(TRUE == VencVhnDestroy)
-	{
-		ret = VideoEncoder_CreateChannel(VencChn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): channel: %d VideoEncoder_CreateChannel\n", ret, ret, VencChn);
-			_venc_error(&VENC_ChnAttr);
-			return -1;
-		}
+	/* Step 3: Side effect - Rebuild overlays if resolution changed */
+	if (resolutionChanged) {
+		_rebuild_overlays(channel, VencChn, info);
 	}
-	else
-	{
-		ret = VideoEncoder_SetChannelAttr(VencChn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			pthread_mutex_unlock(&osd_lock);
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_SetChannelAttr\n", ret, ret);
+
+	/* Step 4: Side effect - Sync JPEG channel if this is sub stream */
+	if (VencChn == CHL_2END_T) {
+		ret = _sync_jpeg_channel(channel, VencChn, info);
+		if (ret != RETURN_OK) {
+			PRINT_ERROR("Error(%d): _sync_jpeg_channel failed\n", ret);
 			return -1;
 		}
 	}
 
-	//当分辨率发生改变时，OSD和LOGO被销毁了，在这边重新创建
-	if (info->width != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width ||
-		info->height != pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height)
-	{
-		//这边先保存分辨率配置，设置OSD、LOGO、隐私遮蔽需要使用该参数
-		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_width = info->width;
-		pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.max_height = info->height;
+	/* Step 5: Persist configuration */
+	_save_channel_config(channel, VencChn, info);
 
-		VideoOSD_SetTitleRegion();
-		VideoVPS_SetCoverRegion();
-		VideoOSD_SetLogoRegion();
-	}
-
-
-	if (STREAM_TYPE_FIR == VencChn)
-	{
-		VENC_RC_PARAM_S stRcParam;
-		memset(&stRcParam, 0, sizeof(VENC_RC_PARAM_S));
-
-		ret = VideoEncoder_GetRcParam(VencChn, &stRcParam);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_GetRcParam\n", ret, ret);
-			return ret;
-		}
-
-		stRcParam.stRcParamH26x.s32MaxISize = 512 * 1024;
-
-		ret = VideoEncoder_SetRcParam(VencChn, &stRcParam);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_SetRcParam\n", ret, ret);
-			return ret;
-		}
-
-		PRINT_INFO("set main stream max I frame size 512KB\n");
-	}
-
-	//保存配置
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.bps = info->bps;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.rc_type = info->rc_type;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.profile = info->profile;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.qt_level = info->qt_level;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.enc_type = info->enc_type;
-	pCaptureDevice->EncDevice[channel].StreamDevice[VencChn].EncChannel_info.frame_count = info->frame_count;
-
-	//由于抓图通道与子码流YUV通道绑定，所以需要跟随子码流分辨率调整分辨率
-	if (CHL_2END_T == VencChn)
-	{
-		ret = VideoEncoder_Stop(jpeg_chn);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_GetChannelAttr\n", ret, ret);
-			return ret;
-		}
-		// 抓图通道设置参数与子码流一致
-		ret = VideoEncoder_GetChannelAttr(jpeg_chn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_GetChannelAttr\n", ret, ret);
-			return ret;
-		}
-		//设置抓图通道的输入帧率
-		VENC_ChnAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicWidth = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.u32PicHeight = info->height;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[0] = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[1] = info->width;
-		VENC_ChnAttr.stVeAttr.stInputPicAttr.au32Stride[2] = 0;
-
-		ret = VideoEncoder_SetChannelAttr(jpeg_chn, &VENC_ChnAttr);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_SetChannelAttr\n", ret, ret);
-			return ret;
-		}
-
-		//当子码流帧率小于抓图通道帧率时，以子码流帧率为准
-		jpeg_fps = (jpeg_fps > info->frame_count) ? info->frame_count : jpeg_fps;
-
-		//设置抓图通道的输出帧率
-		ret = VideoEncoder_SetOutFrameRate(jpeg_chn, jpeg_fps);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): channel: %d VideoEncoder_SetOutFrameRate\n", ret, ret, VencChn);
-			return -1;
-		}
-
-		ret = VideoEncoder_Start(jpeg_chn);
-		if (ret != RETURN_OK)
-		{
-			PRINT_ERROR("Error(%d - %x): VideoEncoder_Start\n", ret, ret);
-			return ret;
-		}
-
-		pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_width = info->width;
-		pCaptureDevice->EncDevice[channel].StreamDevice[jpeg_chn].EncChannel_info.max_height = info->height;
-	}
-
-	return ret;
+	PRINT_INFO("VideoEncoder_UpdateChannelConfig: channel=%d VencChn=%d completed\n",
+	           channel, VencChn);
+	return RETURN_OK;
 }

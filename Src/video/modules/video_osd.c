@@ -801,8 +801,6 @@ int VideoOSD_SetTitleRegion()
 
 	VideoOSD_Create();
 
-	pthread_mutex_unlock(&osd_lock);
-
 	for (int i = 0; i < TD_OSD_MAX_NUM; i++)
 	{
 		pParam.index = i;

@@ -6,6 +6,7 @@
 #include "ni_aec.h"
 #include "ni_agc.h"
 #include "ni_hpf.h"
+#include "../video/modules/include/video_config.h"
 
 #define STREAM_BUFF_SIZE 512 * 1024
 #define JPEG_BUFF_SIZE 100 * 1024
@@ -20,8 +21,6 @@ extern int AecStart;
 extern unsigned int crc32_table[256];
 extern int ias_ad_write_pcm(unsigned char *pcm_buff, unsigned int pcm_length);
 //由于CP3无降帧逻辑，降帧回调函数不会被调用，所以这边将初始化帧率设置为30帧，防止帧率为0导致设备无法出图
-extern unsigned int gFrameRate;
-extern unsigned int sensor_fps;
 
 static int Packets_AudioStreamType_ConToLib_Table[]={
 													[AudioStreamType_PCM]   = Packets_AudioStreamType_PCM16,
@@ -136,6 +135,7 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 	struct tm tm = {0};
 	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
 	AiDevice_p pAiDevice = &GlobalDevice.AiDevice;
+	unsigned int current_fps = VideoConfig_GetFrameRate();
 
 	SLINCE_DATE_TIME_t SlinceDateTime;
 	memset(pAvHeader, 0, sizeof(AV_SLICE_HEADER_t));
@@ -258,9 +258,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 			}
 			else*/
 			{
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].Format.FramesPerSecond) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].Format.FramesPerSecond) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.H264PSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.H264PSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -277,9 +277,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 				pAvHeader->ExternHeader.JpgeSlice.VStreamMask = 0x81;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamType = 0x02;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamRev = pCaptureDevice->VencStreamInfo[Streamtype].reframe[Chn];
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.JpgeSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.JpgeSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -353,9 +353,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 			}
 			else*/
 			{
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.H264ISlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.H264ISlice.VFps = current_fps;
 				}
 				else
 				{
@@ -370,9 +370,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 				pAvHeader->ExternHeader.JpgeSlice.VStreamMask = 0x81;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamType = 0x02;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamRev = pCaptureDevice->VencStreamInfo[Streamtype].reframe[Chn];
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.JpgeSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.JpgeSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -480,9 +480,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 			}
 			else*/
 			{
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.H264PSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.H264PSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -497,9 +497,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 				pAvHeader->ExternHeader.JpgeSlice.VStreamMask = 0x81;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamType = 0x0C;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamRev = pCaptureDevice->VencStreamInfo[Streamtype].reframe[Chn];
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.JpgeSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.JpgeSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -568,9 +568,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 			}
 			else*/
 			{
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.H264ISlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.H264ISlice.VFps = current_fps;
 				}
 				else
 				{
@@ -586,9 +586,9 @@ int _capture_head_to_packets(int Chn, StreamType_e Streamtype, AV_SLICE_TYPE_e A
 				pAvHeader->ExternHeader.JpgeSlice.VStreamMask = 0x81;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamType = 0x0C;
 				pAvHeader->ExternHeader.JpgeSlice.VStreamRev = pCaptureDevice->VencStreamInfo[Streamtype].reframe[Chn];
-				if ((gFrameRate < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != gFrameRate))
+				if ((current_fps < pCaptureDevice->EncDevice[Chn].StreamDevice[Streamtype].EncChannel_info.frame_count) && (0 != current_fps))
 				{
-					pAvHeader->ExternHeader.JpgeSlice.VFps = gFrameRate;
+					pAvHeader->ExternHeader.JpgeSlice.VFps = current_fps;
 				}
 				else
 				{
@@ -2088,11 +2088,11 @@ int capture_init(void)
 	}
 
 	//创建编码自适应线程
-	if (video_venc_adaptive_start())
+	/*if (video_venc_adaptive_start())
 	{
 		PRINT_ERROR("_venc_adaptive_process pthread_create failed\n");
 		return -1;
-	}
+	}*/
 
 	return 0;
 }
@@ -2114,5 +2114,5 @@ void capture_stop_stream_proc()
         pthread_join(g_audio_stream_pid,0);
 	}
 
-	video_venc_adaptive_stop();
+	//video_venc_adaptive_stop();
 }
