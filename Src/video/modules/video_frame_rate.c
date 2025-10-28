@@ -8,9 +8,7 @@
 #include "video_frame_rate.h"
 #include "../modules/include/video_vps.h"
 #include "../modules/include/video_encoder.h"
-
-extern unsigned int gFrameRate;   // Global frame rate variable (video.c)
-extern unsigned int sensor_fps;   // Global sensor fps variable (video.c)
+#include "../modules/include/video_config.h"
 
 /**
  * @brief Sensor frame rate change callback (top-level interface)
@@ -21,12 +19,12 @@ int get_frame_rate(float FrameRate)
 	int ret;
 
 	u32CurFrame = (unsigned int)FrameRate;
-	if (u32CurFrame != gFrameRate)
+	if (u32CurFrame != VideoConfig_GetFrameRate())
 	{
 		/* 检测到帧率变化（2倍或0.5倍关系） */
-		if ((gFrameRate == u32CurFrame * 2) || (gFrameRate == u32CurFrame / 2))
+		if ((VideoConfig_GetFrameRate() == u32CurFrame * 2) || (VideoConfig_GetFrameRate() == u32CurFrame / 2))
 		{
-			PRINT_INFO("Sensor frame rate changing: %d -> %d (2x or 0.5x detected)\n", gFrameRate, u32CurFrame);
+			PRINT_INFO("Sensor frame rate changing: %d -> %d (2x or 0.5x detected)\n", VideoConfig_GetFrameRate(), u32CurFrame);
 
 			/* 同步应用新帧率到所有编码通道 */
 			ret = VideoFrameRate_HandleSensorChange(0, u32CurFrame);
@@ -38,8 +36,8 @@ int get_frame_rate(float FrameRate)
 			PRINT_INFO("Sensor frame rate applied successfully: %d fps\n", u32CurFrame);
 		}
 
-		gFrameRate = u32CurFrame;
-		PRINT_INFO("gFrameRate updated to %d\n", gFrameRate);
+		VideoConfig_SetFrameRate(u32CurFrame);
+		PRINT_INFO("gFrameRate updated to %d\n", VideoConfig_GetFrameRate());
 	}
 
 	return SUCCESS;
@@ -59,7 +57,7 @@ int VideoFrameRate_HandleSensorChange(int channel, unsigned int new_sensor_fps)
         return -1;
     }
 
-    PRINT_INFO("Sensor frame rate changing: %d -> %d\n", sensor_fps, new_sensor_fps);
+    PRINT_INFO("Sensor frame rate changing: %d -> %d\n", VideoConfig_GetSensorFps(), new_sensor_fps);
 
     // Step 1: Set VPS input frame rate (sensor -> VPS)
     ret = VideoVPS_SetInputFrameRate(channel, new_sensor_fps);
@@ -136,7 +134,7 @@ int VideoFrameRate_HandleSensorChange(int channel, unsigned int new_sensor_fps)
     }
 
     // Update global sensor_fps variable
-    sensor_fps = new_sensor_fps;
+    VideoConfig_SetSensorFps(new_sensor_fps);
 
     PRINT_INFO("Sensor frame rate change completed: all channels updated to %d fps\n", new_sensor_fps);
     return RETURN_OK;

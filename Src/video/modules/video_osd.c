@@ -7,14 +7,6 @@
  * - OSD content display (SetTitle, SetLogo)
  * - Bitmap processing (enlarge, convert, edge detection)
  * - Coordinate calculations and overlap resolution
- *
- * Architecture:
- * - Layer 1: Low-level bitmap processing (internal)
- * - Layer 2: Coordinate processing (internal)
- * - Layer 3: Region management (internal)
- * - Layer 4: Public API (VideoOSD_*)
- *
- * All platform-specific operations are abstracted through the platform adapter.
  */
 
 #include "TdCommon.h"
@@ -26,6 +18,7 @@
 #include "../modules/include/video_input.h"
 #include "../modules/include/video_vps.h"
 #include "../modules/include/video_osd.h"
+#include "../modules/include/video_config.h"
 #include "platform_adapter.h"
 
 /* ========================================================================
@@ -51,22 +44,6 @@
 #define OSD_HANDLE_REGION_END   8
 #define OSD_HANDLE_LOGO_BASE    9
 #define OSD_HANDLE_LOGO_END     10
-
-/* Font size table (for different scales) */
-static int g_FontSizeTable[] = {64, 32, 16};
-
-/* Quality table for CBR mode */
-static const CaptureImageQuality_t g_CaptureQtTable[6] = {
-    {50, 40, 50, 42},  /* Quality level 1 */
-    {50, 36, 50, 38},  /* Quality level 2 */
-    {44, 32, 48, 34},  /* Quality level 3 */
-    {44, 28, 48, 30},  /* Quality level 4 */
-    {44, 20, 48, 20},  /* Quality level 5 */
-    {44, 10, 48, 10}   /* Quality level 6 */
-};
-
-extern pthread_mutex_t osd_lock;
-extern SIZE_S imageSize[2][VIDEO_SIZE_NR];
 
 /* ========================================================================
  * Layer 1: Bitmap Processing (Internal)
@@ -906,7 +883,7 @@ int VideoOSD_Destroy(void)
 	stMdkChn.s32DevId = 0;
 	stMdkChn.s32ChnId = 0;
 
-	pthread_mutex_lock(&osd_lock);
+	VideoConfig_LockOsd();
 
 	for (int i = 0; i < pCaptureDevice->EncDevice[0].StreamCount; i++)
 	{
@@ -924,7 +901,7 @@ int VideoOSD_Destroy(void)
 		stMdkChn.s32ChnId++;
 	}
 
-	pthread_mutex_unlock(&osd_lock);
+	VideoConfig_UnlockOsd();
 
 	return SUCCESS;
 }
@@ -1107,7 +1084,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
     OSD_point.s32X = pParam->x;
     OSD_point.s32Y = pParam->y;
 
-    pthread_mutex_lock(&osd_lock);
+    VideoConfig_LockOsd();
 
     /* Save title raster data */
     memcpy(pRegionDevice->channeltitle[type], pParam->raster, pParam->width * pParam->height / 8);
@@ -1124,9 +1101,9 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
         /* Calculate font size based on picture resolution */
         if (STREAM_TYPE_FIR == ichannel) {
             if (0 == pRegionDevice->OsdHeight) {
-                for (j = 0; j < (int)sizeof(g_FontSizeTable) / (int)sizeof(int); j++) {
-                    if ((g_FontSizeTable[j] * 32 / 2) < picsize[STREAM_TYPE_FIR].u32Width * 0.8) {
-                        fontsize = g_FontSizeTable[j];
+                for (j = 0; j < (int)sizeof(VideoConfig_GetFontTableSize()) / (int)sizeof(int); j++) {
+                    if ((VideoConfig_GetFontSize(j) * 32 / 2) < picsize[STREAM_TYPE_FIR].u32Width * 0.8) {
+                        fontsize = VideoConfig_GetFontSize(j);
                         break;
                     }
                 }
@@ -1205,7 +1182,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
                                      stOsdDispAttr.stSize, OSD_point, &stOsdDispAttr.stStartPiont);
         if (ret != RETURN_OK) {
             PRINT_ERROR("_osd_coord_calculate failed\n");
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
 
@@ -1230,7 +1207,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
         ret = adapter->osd_get_buffer(u32OsdHandle, &stOsdBufInfo);
         if (ret != RETURN_OK) {
             PRINT_ERROR("osd_get_buffer failed with %x\n", ret);
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
 
@@ -1242,7 +1219,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
                                      stOsdRegion.enPixelFormat, EnlargeNumber, &stSrcOsdAttr.stSize);
         if (ret != RETURN_OK) {
             PRINT_ERROR("_vsf_drv_enlarge_osd failed with %x\n", ret);
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
 
@@ -1253,7 +1230,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
         ret = adapter->osd_set_palette(&stMdkChn, &stOsdPalette);
         if (ret != RETURN_OK) {
             PRINT_ERROR("osd_set_palette failed with %x\n", ret);
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
 
@@ -1263,7 +1240,7 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
         if (ret != RETURN_OK) {
             PRINT_ERROR("u32OsdHandle: %d osd_paint_to_chn failed with %x\n", u32OsdHandle, ret);
             _osd_error(&stMdkChn, &stOsdDispAttr);
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
 
@@ -1271,13 +1248,13 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
         ret = adapter->osd_refresh(u32OsdHandle, 500);
         if (ret != RETURN_OK) {
             PRINT_ERROR("osd_refresh failed with %x\n", ret);
-            pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
             return ret;
         }
     }
 
     usleep(50 * 1000);
-    pthread_mutex_unlock(&osd_lock);
+	VideoConfig_UnlockOsd();
 
     /* Save OSD parameters */
     pRegionDevice->OsdWidth[type] = pParam->width;
@@ -1328,8 +1305,8 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 	memset(&picsize, 0, sizeof(SIZE_S) * STREAM_TYPE_BUT);
 
 	int vstd = VIDEO_STANDARD_PAL;
-	unsigned int cif_width = imageSize[vstd][VIDEO_SIZE_CIF].u32Width;
-	unsigned int cif_height = imageSize[vstd][VIDEO_SIZE_CIF].u32Height;
+	unsigned int cif_width = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Width;
+	unsigned int cif_height = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Height;
 	RegionDevice_p pRegionDevice = &GlobalDevice.RegionDevice;
 	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
 	PlatformAdapter* adapter = GetPlatformAdapter();
@@ -1344,7 +1321,7 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 		pRegionDevice->LogoInit = TRUE;
 	}
 
-	pthread_mutex_lock(&osd_lock);
+	VideoConfig_LockOsd();
 	for (; ichannel < pCaptureDevice->EncDevice[channel].StreamCount; ichannel++)
 	{
 		if (STREAM_TYPE_THI == ichannel) {
@@ -1361,7 +1338,7 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 		ret = adapter->osd_get_disp_attr(u32OsdHandle, &stMdkChn, &stOsdDispAttr);
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("osd_get_disp_attr failed with %x\n", ret);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 
@@ -1421,14 +1398,14 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 		ret = adapter->osd_get_buffer(u32OsdHandle, &stOsdBufInfo);
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("osd_get_buffer failed with %x\n", ret);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 
 		ret = _osd_bit_switch(logo, (NI_U8 *)stOsdBufInfo.pu32VirtAddr, stOsdRegion.enPixelFormat, &stOsdDispAttr.stSize);
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("_osd_bit_switch failed with %x\n", ret);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 
@@ -1437,7 +1414,7 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 		ret = adapter->osd_set_palette(&stMdkChn, &stOsdPalette);
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("osd_set_palette failed with %x\n", ret);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 
@@ -1447,14 +1424,14 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("u32OsdHandle: %d osd_paint_to_chn failed with %x\n", u32OsdHandle, ret);
 			_osd_error(&stMdkChn, &stOsdDispAttr);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 
 		ret = adapter->osd_refresh(u32OsdHandle, 500);
 		if (ret != RETURN_OK) {
 			PRINT_ERROR("osd_refresh failed with %x\n", ret);
-			pthread_mutex_unlock(&osd_lock);
+			VideoConfig_UnlockOsd();
 			return ret;
 		}
 		u32OsdHandle++;
@@ -1462,7 +1439,7 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 
 	usleep(50 * 1000);
 
-	pthread_mutex_unlock(&osd_lock);
+	VideoConfig_UnlockOsd();
 	logo = NULL;
 	pRegionDevice->LogoEnable = pParam->enable;
 	pRegionDevice->LogoX = pParam->x;

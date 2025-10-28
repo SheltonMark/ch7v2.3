@@ -7,7 +7,7 @@
 /* New adapter-based video pipeline interfaces */
 #include "video_pipeline.h"
 #include "video_osd.h"
-
+#include "video_config.h"
 
 GlobalDevice_t GlobalDevice = 
 {
@@ -563,8 +563,14 @@ void MediaHardWareInit(int Normal)
 		PRINT_ERROR("gpio_set_value SPEAK_MUTE failed\n");
 	}
 
+    /* ========== 初始化 video_config 模块 ========== */
+    if (VideoConfig_Init() != 0) {
+        PRINT_ERROR("VideoConfig_Init failed\n");
+        return;
+    }
+
 	/********** 参数初始化************/
-	/* Use new VideoPipeline_Init() instead of video_in_init() */
+	/* instead of video_in_init() */
 	if(VideoPipeline_Init() != HI_SUCCESS)
 	{
 		PRINT_ERROR("VideoPipeline_Init failed\n");

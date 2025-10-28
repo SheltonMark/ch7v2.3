@@ -22,13 +22,16 @@
 #include "../../Include/APIs/Capture.h"
 #include "../modules/include/video_vps.h"
 #include "../modules/include/video_osd.h"
+#include "../modules/include/video_config.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
-/* ========================================================================== */
+
+
 
 /* ========================================================================== */
-/*                          内部函数声明区                                    */
+/*                          全局变量定义区                                    */
 /* ========================================================================== */
+
 static VENC_PROFILE_E H264Profile_Table[]={
 										VENC_H264_BASE_LINE_PROFILE,
 										VENC_H264_MAIN_PROFILE,
@@ -37,24 +40,6 @@ static VENC_PROFILE_E H264Profile_Table[]={
 
 static VENC_PROFILE_E H265Profile_Table[]={VENC_H265_MAIN_PROFILE};
 
-/* ========================================================================== */
-/*                          全局变量定义区                                    */
-/* ========================================================================== */
-
-/* 已删除的extern声明（因改为同步应用模式）：
- * - extern BOOL ChangeChnParam[VENC_MAX_CHN_NUM];
- * - extern channel_info ChnParam[VENC_MAX_CHN_NUM];
- * - extern pthread_rwlock_t ChangeParamLock;
- */
-
-extern SIZE_S imageSize[2][VIDEO_SIZE_NR];
-
-// QP tables from video.c
-extern CaptureImageQuality_t CaptureQtTable[6];
-extern CaptureImageQuality_t CHL_2END_T_CaptureQtTable[6];
-
-// Sensor frame rate
-extern unsigned int sensor_fps;
 
 /* ========================================================================== */
 /*                          函数实现区                                        */
@@ -108,7 +93,7 @@ static int _venc_error(VENC_CHN_ATTR_S *VENC_ChnAttr)
 /// 根据通道号获取对应的QP表
 static const CaptureImageQuality_t* _get_qp_table(int VencChn)
 {
-	return (VencChn == CHL_2END_T) ? CHL_2END_T_CaptureQtTable : CaptureQtTable;
+	return (VencChn == CHL_2END_T) ? VideoConfig_GetSubstreamQualityTable() : VideoConfig_GetQualityTable();
 }
 
 /// 填充CBR模式的QP参数
@@ -184,8 +169,8 @@ static int _get_pic_size(video_size_t enPicSize, SIZE_S* pstSize)
 		vstd = VIDEO_STANDARD_NTSC;
 	}
 
-	pstSize->u32Width = imageSize[vstd][enPicSize].u32Width;
-	pstSize->u32Height = imageSize[vstd][enPicSize].u32Height;
+	pstSize->u32Width = VideoConfig_GetImageSize(vstd, enPicSize)->u32Width;
+	pstSize->u32Height = VideoConfig_GetImageSize(vstd, enPicSize)->u32Height;
 	if(pstSize->u32Width == 0 && pstSize->u32Height == 0)
 	{
 		return FAILED;
@@ -394,7 +379,7 @@ static int _sync_jpeg_channel(int channel, int VencChn, channel_info *subStreamI
     }
 
     // Sync resolution and frame rate with sub stream
-    jpegAttr.stRcAttr.u32FrmRateNum = (sensor_fps > subStreamInfo->frame_count) ? subStreamInfo->frame_count : sensor_fps;
+    jpegAttr.stRcAttr.u32FrmRateNum = (VideoConfig_GetSensorFps() > subStreamInfo->frame_count) ? subStreamInfo->frame_count : VideoConfig_GetSensorFps();
     jpegAttr.stVeAttr.stInputPicAttr.u32PicWidth = subStreamInfo->width;
     jpegAttr.stVeAttr.stInputPicAttr.u32PicHeight = subStreamInfo->height;
     jpegAttr.stVeAttr.stInputPicAttr.au32Stride[0] = subStreamInfo->width;
@@ -440,18 +425,6 @@ static int _sync_jpeg_channel(int channel, int VencChn, channel_info *subStreamI
  * @param info 编码配置
  * @param pResolutionChanged [out] 分辨率是否变化
  * @return 0成功，<0失败
- *
- * 职责：
- * - 条件销毁通道（编码类型/Profile变化）
- * - 构造VENC属性
- * - Create或Set通道
- * - 主码流特殊处理（512KB I帧）
- * - 检测分辨率变化
- *
- * 不做：
- * - 不重建OSD/Logo（由调用者决定）
- * - 不处理JPEG联动（由调用者决定）
- * - 不保存配置（由调用者决定）
  */
 static int _apply_venc_config(int channel, int VencChn, channel_info *info, BOOL *pResolutionChanged)
 {
@@ -508,7 +481,7 @@ static int _apply_venc_config(int channel, int VencChn, channel_info *info, BOOL
 
     // Update RC config
     vencAttr.stRcAttr.enRcMode = info->rc_type;
-    vencAttr.stRcAttr.u32FrmRateNum = (sensor_fps > info->frame_count) ? info->frame_count : sensor_fps;
+    vencAttr.stRcAttr.u32FrmRateNum = (VideoConfig_GetSensorFps() > info->frame_count) ? info->frame_count : VideoConfig_GetSensorFps();
     vencAttr.stGopAttr.stGopNomalAttr.u32Gop = MAX(vencAttr.stRcAttr.u32FrmRateNum, 1) * 2;
 
     MaxBitRate = vencAttr.stRcAttr.u32FrmRateNum / vencAttr.stRcAttr.u32FrmRateDenom

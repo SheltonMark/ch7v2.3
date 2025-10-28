@@ -427,7 +427,7 @@ typedef struct QP_FORMAT
 	unsigned int PminQP;
 } QP_FORMAT;
 
-#ifdef DEBUG_AVBR
+#if 0
 typedef struct AVBR_Attr
 {
 	int InitQp;

@@ -72,24 +72,28 @@ void VideoConfig_SetSensorFps(unsigned int fps);
 const SIZE_S* VideoConfig_GetImageSize(int vstd, video_size_t size);
 
 /**
- * @brief Get capture quality parameters for main stream
- * @param level Quality level (0-5, higher = better quality)
- * @return Pointer to quality parameters, or NULL if invalid level
+ * @brief Get capture quality table for main stream (entire array)
+ * @return Pointer to quality table array (6 levels: 0-5)
+ *
+ * Usage: const CaptureImageQuality_t *table = VideoConfig_GetQualityTable();
+ *        int qp = table[level].ImaxQP;  // level: 0-5
  *
  * Quality levels:
  * 0 = Lowest quality (highest compression)
  * 5 = Highest quality (lowest compression)
  */
-const CaptureImageQuality_t* VideoConfig_GetQualityTable(int level);
+const CaptureImageQuality_t* VideoConfig_GetQualityTable(void);
 
 /**
- * @brief Get capture quality parameters for sub stream
- * @param level Quality level (0-5, higher = better quality)
- * @return Pointer to sub stream quality parameters, or NULL if invalid level
+ * @brief Get capture quality table for sub stream (entire array)
+ * @return Pointer to sub stream quality table array (6 levels: 0-5)
+ *
+ * Usage: const CaptureImageQuality_t *table = VideoConfig_GetSubstreamQualityTable();
+ *        int qp = table[level].ImaxQP;  // level: 0-5
  *
  * Note: Sub stream uses different QP ranges compared to main stream
  */
-const CaptureImageQuality_t* VideoConfig_GetSubstreamQualityTable(int level);
+const CaptureImageQuality_t* VideoConfig_GetSubstreamQualityTable(void);
 
 /**
  * @brief Get font size for specified index

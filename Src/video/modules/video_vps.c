@@ -21,10 +21,9 @@
 #include "../../Include/APIs/Video.h"
 #include "../../Include/APIs/Capture.h"
 #include "../modules/include/video_osd.h"
+#include "../modules/include/video_config.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
-
-extern SIZE_S imageSize[2][VIDEO_SIZE_NR];
 
 /**
  * @brief Internal helper: Set a single mask region for all applicable VPS channels
@@ -177,8 +176,8 @@ int VideoVPS_SetCoverRegion()
 
     /* CIF reference coordinate system */
     int vstd = VIDEO_STANDARD_PAL;
-    unsigned int cif_width = imageSize[vstd][VIDEO_SIZE_CIF].u32Width;
-    unsigned int cif_height = imageSize[vstd][VIDEO_SIZE_CIF].u32Height;
+	unsigned int cif_width = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Width;
+	unsigned int cif_height = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Height;
 
     /* Get actual stream resolutions for scaling */
     for (i = 0; i < pCaptureDevice->EncCount; i++)
@@ -283,8 +282,8 @@ int VideoVPS_SetCover(int channel, int index, VIDEO_COVER_PARAM *pParam)
 
     /* CIF reference coordinate system (352x288 for PAL) */
     int vstd = VIDEO_STANDARD_PAL;
-    unsigned int cif_width = imageSize[vstd][VIDEO_SIZE_CIF].u32Width;
-    unsigned int cif_height = imageSize[vstd][VIDEO_SIZE_CIF].u32Height;
+	unsigned int cif_width = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Width;
+	unsigned int cif_height = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Height;
 
     if (!pParam) {
         PRINT_ERROR("VideoVPS_SetCover: pParam is NULL\n");
@@ -503,10 +502,10 @@ int VideoVPS_SetOutputParam(int channel, DWORD dwType, VPS_CHN_OUT_ATTR *ChnAttr
     VPS_ChnAttr.stEncAttr.enType = ChnAttr->EnPayLoad;
 
     /* Step 5: Set output frame rate (limited by sensor fps) */
-    VPS_ChnAttr.stEncAttr.u32OutFps = (sensor_fps > ChnAttr->OutFps) ? ChnAttr->OutFps : sensor_fps;
+    VPS_ChnAttr.stEncAttr.u32OutFps = (VideoConfig_GetSensorFps() > ChnAttr->OutFps) ? ChnAttr->OutFps : VideoConfig_GetSensorFps();
 
     /* Special handling for 12fps: multiply by 2 for timestamp calculation */
-    if (12 == sensor_fps) {
+    if (12 == VideoConfig_GetSensorFps()) {
         VPS_ChnAttr.stEncAttr.u32OutFps *= 2;
     }
 

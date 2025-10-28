@@ -146,7 +146,7 @@ int VideoPipeline_Init(void)
                 PRINT_ERROR("VPS create encode channel failed, grp=%d chn=%d\n", VpsGrp, VpsChn);
                 return -1;
             }
-            PRINT_INFO("✓ VPS channel created: grp=%d chn=%d %dx%d\n",
+            PRINT_INFO("VPS channel created: grp=%d chn=%d %dx%d\n",
                        VpsGrp, VpsChn, vpsConfig.u32OutWidth, vpsConfig.u32OutHeight);
 
             /* Step 5.1: Bind VI→VPS (must be before VENC creation) */
@@ -157,7 +157,7 @@ int VideoPipeline_Init(void)
                 PRINT_ERROR("Bind VI->VPS failed, chn=%d\n", venc_channel);
                 return -1;
             }
-            PRINT_INFO("✓ VI->VPS bound: VI[0] -> VPS[%d,%d]\n", VpsGrp, VpsChn);
+            PRINT_INFO("VI->VPS bound: VI[0] -> VPS[%d,%d]\n", VpsGrp, VpsChn);
 
             /* Step 6.1: Create VENC channel */
             VENC_CHN_ATTR_S vencAttr = {0};
@@ -184,7 +184,7 @@ int VideoPipeline_Init(void)
                 PRINT_ERROR("VENC start failed, chn=%d\n", venc_channel);
                 return -1;
             }
-            PRINT_INFO("✓ VENC channel created: chn=%d %dx%d %dkbps %dfps type=%d\n",
+            PRINT_INFO("VENC channel created: chn=%d %dx%d %dkbps %dfps type=%d\n",
                        venc_channel, info->max_width, info->max_height,
                        info->bps, info->frame_count, info->enc_type);
         }

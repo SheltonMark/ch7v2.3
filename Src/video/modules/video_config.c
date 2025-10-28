@@ -187,24 +187,14 @@ const SIZE_S* VideoConfig_GetImageSize(int vstd, video_size_t size)
 	return &g_image_size[vstd][size];
 }
 
-const CaptureImageQuality_t* VideoConfig_GetQualityTable(int level)
+const CaptureImageQuality_t* VideoConfig_GetQualityTable(void)
 {
-	if (level < 0 || level > 5) {
-		PRINT_ERROR("Invalid quality level: %d (must be 0-5)\n", level);
-		return NULL;
-	}
-
-	return &g_capture_qt_table[level];
+	return g_capture_qt_table;
 }
 
-const CaptureImageQuality_t* VideoConfig_GetSubstreamQualityTable(int level)
+const CaptureImageQuality_t* VideoConfig_GetSubstreamQualityTable(void)
 {
-	if (level < 0 || level > 5) {
-		PRINT_ERROR("Invalid substream quality level: %d (must be 0-5)\n", level);
-		return NULL;
-	}
-
-	return &g_substream_qt_table[level];
+	return g_substream_qt_table;
 }
 
 int VideoConfig_GetFontSize(int index)
@@ -215,6 +205,11 @@ int VideoConfig_GetFontSize(int index)
 	}
 
 	return g_font_size_table[index];
+}
+
+int VideoConfig_GetFontTableSize(void)
+{
+	return sizeof(g_font_size_table);
 }
 
 /* ========================================================================== */
