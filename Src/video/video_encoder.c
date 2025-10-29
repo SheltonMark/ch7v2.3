@@ -20,9 +20,9 @@
 #include "../../Include/APIs/TdCommon.h"
 #include "../../Include/APIs/Video.h"
 #include "../../Include/APIs/Capture.h"
-#include "../modules/include/video_vps.h"
-#include "../modules/include/video_osd.h"
-#include "../modules/include/video_config.h"
+#include "video_vps.h"
+#include "video_osd.h"
+#include "video_config.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
 
@@ -1463,7 +1463,7 @@ int VideoEncoder_SetRcParam(int VencChn, VENC_RC_PARAM_S* pRcParam)
 
 
 /**
- * @brief 更新编码通道的完整配置（Linus式重构版）
+ * @brief 更新编码通道的完整配置
  * @param channel 视频输入通道 (0-based)
  * @param dwType 码流类型 (CHL_MAIN_T/CHL_2END_T/CHL_JPEG_T)
  * @param info 编码参数配置

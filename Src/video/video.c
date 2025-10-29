@@ -3,11 +3,11 @@
 #include "logo.h"
 #include "mdk_vps.h"
 #include "ni_comm_vps.h"
-#include "modules/include/video_encoder.h"
-#include "modules/include/video_input.h"
-#include "modules/include/video_osd.h"
-#include "modules/include/video_vps.h"
-#include "modules/include/video_frame_rate.h"
+#include "video_encoder.h"
+#include "video_input.h"
+#include "video_osd.h"
+#include "video_vps.h"
+#include "video_frame_rate.h"
 
 int VideoCreate(int index)
 {

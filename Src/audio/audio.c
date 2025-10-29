@@ -3,6 +3,7 @@
 #include "ni_aec.h"
 #include "ni_agc.h"
 #include "ni_hpf.h"
+#include "ring_buffer.h"
 
 static AC_SAMPLE_RATE AudioRate_ConToLib_Table[] = {
 												AC_SR_8K,

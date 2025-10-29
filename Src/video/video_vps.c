@@ -20,8 +20,8 @@
 #include "../../Include/APIs/TdCommon.h"
 #include "../../Include/APIs/Video.h"
 #include "../../Include/APIs/Capture.h"
-#include "../modules/include/video_osd.h"
-#include "../modules/include/video_config.h"
+#include "video_osd.h"
+#include "video_config.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
 

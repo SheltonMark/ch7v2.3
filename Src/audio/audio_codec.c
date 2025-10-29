@@ -1,4 +1,5 @@
 #include "TdCommon.h"
+#include "ring_buffer.h"
 
 RING_BUFF ENCODE_PCM_BUFF;
 

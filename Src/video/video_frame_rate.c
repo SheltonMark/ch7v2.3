@@ -6,9 +6,9 @@
 #include "TdCommon.h"
 #include "sdk_comm.h"
 #include "video_frame_rate.h"
-#include "../modules/include/video_vps.h"
-#include "../modules/include/video_encoder.h"
-#include "../modules/include/video_config.h"
+#include "video_vps.h"
+#include "video_encoder.h"
+#include "video_config.h"
 
 /**
  * @brief Sensor frame rate change callback (top-level interface)

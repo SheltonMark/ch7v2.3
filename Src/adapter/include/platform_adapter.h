@@ -15,10 +15,6 @@
 extern "C" {
 #endif
 
-/* Forward declarations for platform-specific types */
-typedef struct _VI_CONFIG_S VI_CONFIG_S;
-typedef struct _VENC_CONFIG_S VENC_CONFIG_S;
-
 /* VPS configuration structure */
 typedef struct _VPS_CONFIG_S {
     NI_U32 u32InWidth;
@@ -63,14 +59,12 @@ typedef struct PlatformAdapter {
     int (*isp_set_auto_fps)(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl);  /* Set ISP auto FPS control */
 
     /* ===== VPS (Video Processing/Scaling) Operations ===== */
-    int (*vps_create_grp)(int VpsGrp, void* pGrpAttr);
-    int (*vps_destroy_grp)(int VpsGrp);
-    int (*vps_create_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pVpsAttr);
+    int (*vps_create_chn)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pVpsAttr);
     int (*vps_destroy_chn)(int VpsGrp, int VpsChn);
     int (*vps_enable_chn)(int VpsGrp, int VpsChn);
     int (*vps_disable_chn)(int VpsGrp, int VpsChn);
-    int (*vps_create_vd_chn)(int VpsGrp, VPS_VD_CHN_ATTR_S* pVdAttr);  /* For VD (motion detection) channel */
     int (*vps_create_encode_chn)(int VpsGrp, int VpsChn, VPS_CONFIG_S* pConfig);  /* For encode channels - preferred */
+    int (*vps_create_vd_chn)(int VpsGrp, VPS_VD_CHN_ATTR_S* pVdAttr);  /* For VD (motion detection) channel */
     int (*vps_get_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Get VPS channel attributes */
     int (*vps_set_chn_attr)(int VpsGrp, int VpsChn, VPS_CHN_ATTR_S* pAttr);  /* Set VPS channel attributes */
     int (*vps_get_grp_attr)(int VpsGrp, VPS_GRP_ATTR_S* pAttr);  /* Get VPS group attributes */
@@ -83,7 +77,7 @@ typedef struct PlatformAdapter {
     int (*vps_disable_chn_mask)(int VpsGrp, int VpsChn, int index);  /* Disable VPS channel mask */
 
     /* ===== VENC (Video Encoding) Operations ===== */
-    /* Basic operations (Phase 1) */
+    /* Basic operations */
     int (*venc_create)(int VencChn, VENC_CHN_ATTR_S* pAttr);
     int (*venc_destroy)(int VencChn);
     int (*venc_start)(int VencChn);
@@ -91,7 +85,7 @@ typedef struct PlatformAdapter {
     int (*venc_get_stream)(int VencChn, VENC_STREAM_S* pStream, int timeout);
     int (*venc_release_stream)(int VencChn, VENC_STREAM_S* pStream);
 
-    /* Dynamic parameter operations (Phase 2) */
+    /* Dynamic parameter operations */
     int (*venc_set_chn_attr)(int VencChn, VENC_CHN_ATTR_S* pAttr);
     int (*venc_get_chn_attr)(int VencChn, VENC_CHN_ATTR_S* pAttr);
     int (*venc_get_rc_param)(int VencChn, VENC_RC_PARAM_S* pParam);
@@ -99,11 +93,19 @@ typedef struct PlatformAdapter {
     int (*venc_request_idr)(int VencChn);
     int (*venc_set_rotate)(int VencChn, int enRotation);  /* Rotation angle: 0/90/180/270 */
 
-    /* Additional VENC operations (Phase 3) */
-    int (*venc_set_stream_check)(int VencChn, int checkMode);  /* Stream check mode */
+    /* Additional VENC operations */
+    int (*venc_set_stream_check)(int VencChn, VENC_STREAM_CHECK_TYPE_E checkMode);  /* Stream check mode */
     int (*venc_set_out_frame_rate)(int VencChn, int frameRate);  /* Output frame rate */
 
-    /* ===== SYS (System Binding) Operations ===== */
+    /* ===== SYS (System) Operations ===== */
+    /* System initialization */
+    int (*sys_init)(void);  /* System SDK initialization */
+    int (*sys_exit)(void);  /* System SDK de-initialization */
+    int (*sys_mbuf_init)(void);  /* Memory buffer pool initialization */
+    int (*sys_mbuf_exit)(void);  /* Memory buffer pool cleanup */
+    int (*sys_pinmux_init)(void);  /* Pinmux configuration (I2C, sensor reset, etc.) */
+
+    /* System binding */
     int (*sys_bind)(MDK_CHN_S* pSrcChn, MDK_CHN_S* pDestChn);
     int (*sys_unbind)(MDK_CHN_S* pSrcChn, MDK_CHN_S* pDestChn);
 
@@ -116,12 +118,11 @@ typedef struct PlatformAdapter {
     int (*osd_get_disp_attr)(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr);
     int (*osd_paint_to_chn)(NI_U32 u32Handle, MDK_CHN_S* pChn, OSD_DISP_ATTR_S* pAttr, NI_U32 timeout);
     int (*osd_clear_from_chn)(NI_U32 u32Handle, MDK_CHN_S* pChn, NI_U32 timeout);
-    int (*osd_refresh)(NI_U32 u32Handle, NI_U32 timeout);
+    int (*osd_refresh)(NI_U32 u32Handle, NI_U32 timeout);  /* Refresh OSD - timeout in milliseconds */
 
     /* Legacy OSD operations (for compatibility) */
     int (*osd_create)(NI_U32 u32Handle, MDK_CHN_S* pChn, SAMPLE_OSD_CONFIG_S* pCfg);
     int (*osd_destroy)(NI_U32 u32Handle);
-    int (*osd_update)(NI_U32 u32Handle, void* pData, int len);
 
 } PlatformAdapter;
 

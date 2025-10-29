@@ -14,11 +14,11 @@
 #include "logo.h"
 #include "mdk_vps.h"
 #include "ni_comm_vps.h"
-#include "../modules/include/video_encoder.h"
-#include "../modules/include/video_input.h"
-#include "../modules/include/video_vps.h"
-#include "../modules/include/video_osd.h"
-#include "../modules/include/video_config.h"
+#include "video_encoder.h"
+#include "video_input.h"
+#include "video_vps.h"
+#include "video_osd.h"
+#include "video_config.h"
 #include "platform_adapter.h"
 
 /* ========================================================================
@@ -347,6 +347,8 @@ static int _osd_bitmap_convert_bits(unsigned char *psrc, unsigned char *pdest,
 
     return 0;
 }
+
+
 
 /**
  * @brief Add edge detection to OSD bitmap
@@ -1447,6 +1449,8 @@ int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 
 	return ret;
 }
+
+
 
 int VideoOSD_Init(void)
 {

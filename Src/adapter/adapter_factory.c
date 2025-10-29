@@ -6,7 +6,7 @@
  * platform adapter at compile time based on PLATFORM_AX macro.
  */
 
-#include "platform_adapter.h"
+#include "include/platform_adapter.h"
 #include <stdio.h>
 #include <string.h>
 

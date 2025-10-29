@@ -129,14 +129,6 @@ typedef struct GlobalDevice_s
 #endif
 }GlobalDevice_t,*GlobalDevice_p;
 
-typedef struct RING_BUFF
-{
-    unsigned char *buf;
-    unsigned int head;
-    unsigned int tail;
-    unsigned int tatol_len;
-} RING_BUFF;
-
 extern GlobalDevice_t GlobalDevice;
 
 #ifdef DEBUG
@@ -183,9 +175,6 @@ int VideoPipeline_Init(void);
 int VideoOSD_Init(void);
 int VideoOverlay_UpdateTimestamp(int VpsGrp, int VpsChn, const char* timestamp);
 int VideoOverlay_UpdateCustomText(int VpsGrp, int VpsChn, const char* text, int x, int y);
-
-int write_ring_buff(RING_BUFF *ring_buf, unsigned char *input_data, unsigned int len);
-int read_ring_buff(RING_BUFF *ring_buf, unsigned char *output_data, unsigned int len);
 
 #endif
 

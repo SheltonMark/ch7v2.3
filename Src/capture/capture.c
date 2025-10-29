@@ -6,7 +6,7 @@
 #include "ni_aec.h"
 #include "ni_agc.h"
 #include "ni_hpf.h"
-#include "../video/modules/include/video_config.h"
+#include "../video/video_config.h"
 
 #define STREAM_BUFF_SIZE 512 * 1024
 #define JPEG_BUFF_SIZE 100 * 1024

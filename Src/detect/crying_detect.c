@@ -1,4 +1,5 @@
 #include "TdCommon.h"
+#include "ring_buffer.h"
 
 #define IAS_AD_MODEL_FILE "/var/model/net_model_ad_model_256x256_ad_8k.bin"
 

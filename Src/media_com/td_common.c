@@ -8,13 +8,16 @@
 #include "video_pipeline.h"
 #include "video_osd.h"
 #include "video_config.h"
+#include "platform_adapter.h"
+
+/* Configuration modules */
+#include "sensor_config.h"
+#include "product_config.h"
 
 GlobalDevice_t GlobalDevice = 
 {
 	GlobalDevice_Mutex:PTHREAD_MUTEX_INITIALIZER,
 };
-
-pthread_mutex_t VideoVpssSwichMute[VPSS_MAX_GRP_NUM];
 
 
 int _get_image_size(int width, int height)
@@ -157,85 +160,30 @@ int _get_image_size(int width, int height)
 	return  size;
 }
 
-void VB_Config(int gs_enNorm)
-{
-	PRINT_TRACE("VB_Config success!\n");
-}
-
 void MediaSensorInit()
 {
-	PRINT_ERROR("MediaSensorInit start");
-	int      	s32Ret = -1;
-    MBUF_CONF_S stMbufConf;
-	unsigned int u32Value = 0;
+	PRINT_ERROR("MediaSensorInit start\n");
 
-    NI_MDK_SYS_Exit();
-    NI_MDK_MBUF_Exit();
-
-    /* VPS 使用私有缓存池时可不用配置公共缓冲池 */
-    memset(&stMbufConf, 0, sizeof(MBUF_CONF_S));
-    stMbufConf.u32MaxPoolCnt = 128;
-
-	stMbufConf.astCommPool[0].u32BlkCnt  = 0;
-    stMbufConf.astCommPool[0].u32BlkSize = 1920 * 1080 * 2;		//16200KB
-    strcpy(stMbufConf.astCommPool[1].acMmzName, "anonymous");
-    s32Ret = NI_MDK_MBUF_SetConf(&stMbufConf);
-	if (SUCCESS != s32Ret)
-	{
-        PRINT_ERROR("call NI_MDK_MBUF_SetConf err %#x\n", s32Ret);
-        return;
-    }
-
-    s32Ret = NI_MDK_MBUF_Init();
-	if (SUCCESS != s32Ret)
-	{
-        PRINT_ERROR("call NI_MDK_MBUF_Init err %#x\n", s32Ret);
-        return;
-    }
-
-    s32Ret = NI_MDK_SYS_Init();
-	if (SUCCESS != s32Ret)
-	{
-        PRINT_ERROR("call NI_MDK_SYS_Init err %#x\n", s32Ret);
-        return;
-    }
-
-
-	s32Ret = NI_MDK_PM_SetClkMgrPolicy(PM_CLK_MGR_POLICY_LEVEL);
-	if (SUCCESS != s32Ret)
-	{
-		PRINT_ERROR("call NI_MDK_PM_SetClkMgrPolicy err %#x\n", s32Ret);
-		return;
-	}
-	
-	s32Ret = NI_MDK_PM_SetClkCapLevel(PM_CLOCK_CAP_LEVEL_S5);
-	if (SUCCESS != s32Ret)
-	{
-		PRINT_ERROR("call NI_MDK_PM_SetClkCapLevel err %#x\n", s32Ret);
+	PlatformAdapter* adapter = GetPlatformAdapter();
+	if (!adapter) {
+		PRINT_ERROR("MediaSensorInit: Platform adapter not initialized\n");
 		return;
 	}
 
-	/* set i2c0 pinmux */
-	/* set sensor vclk pinmux */
-	/* set sensor reset gpio38 */
-	NI_MDK_SYS_ReadReg(0x09001014, &u32Value);
-	u32Value &= 0xf0000fff;
-	u32Value |= 0x222000;
-	NI_MDK_SYS_WriteReg(0x09001014, u32Value);
+	/* System SDK initialization (MBUF + SYS + Clock management) */
+	if (adapter->sys_init && adapter->sys_init() != HI_SUCCESS) {
+		PRINT_ERROR("MediaSensorInit: sys_init failed\n");
+		return;
+	}
 
-	NI_MDK_SYS_ReadReg(0x09050004, &u32Value);
-	u32Value &= ~(1 << 6);
-	u32Value |= 0x40;
-	NI_MDK_SYS_WriteReg(0x09050004, u32Value);
+	/* Pinmux configuration (I2C, sensor reset GPIO, etc.)
+	 * This reads product_config to select correct pin configuration */
+	if (adapter->sys_pinmux_init && adapter->sys_pinmux_init() != HI_SUCCESS) {
+		PRINT_ERROR("MediaSensorInit: sys_pinmux_init failed\n");
+		return;
+	}
 
-	NI_MDK_SYS_ReadReg(0x09050000, &u32Value);
-	u32Value &= ~(1 << 6);
-	NI_MDK_SYS_WriteReg(0x09050000, u32Value);
-	usleep(20 * 1000);
-	u32Value |= (1 << 6);
-	NI_MDK_SYS_WriteReg(0x09050000, u32Value);
-	usleep(50 * 1000);
-
+	PRINT_ERROR("MediaSensorInit complete\n");
 	return;
 }
 
@@ -250,99 +198,64 @@ void MediaSetSystemInfor(int Mode, int Type, DeviceIspInfo info)
 	BlindDetectDevice_p pBlindDetectDevice = &GlobalDevice.BlindDetectDevice;	   //遮挡参数设置
 	HumanDetectDevice_p pHumanDetectDevice = &GlobalDevice.HumanDetectDevice;  //人形参数和结构
 	SensorDevice_p pSensorDevice = &GlobalDevice.SensorDevice;
-	
-	//暂时写死
-	info.SensorType = SENSOR_0S04D10;
-#ifdef DEBUG_AVBR
-	AVBR_Attr *pAvbrAttr = &GlobalDevice.avbr_attr;
 
-	pAvbrAttr->InitQp = 35;
-	pAvbrAttr->IminQP = 28;
-	pAvbrAttr->ImaxQP = 50;
-	pAvbrAttr->PminQP = 28;
-	pAvbrAttr->PmaxQP = 50;
-	pAvbrAttr->MaxratePercent = 200;
-	pAvbrAttr->IFrmMaxBits = 512*8*1000;
-	pAvbrAttr->IPQPDelta = 3;
-	pAvbrAttr->IBitProp = 5;
-	pAvbrAttr->PBitProp = 1;
-	pAvbrAttr->FluctuateLevel = 0;
-	pAvbrAttr->StillratePercent = 30;
-	pAvbrAttr->Maxstillqp = 34;
-#endif
-	//info.SensorType = SENSOR_GC4653;
-	//PRINT_ERROR("info.SensorType is %d",info.SensorType);
-	if (SENSOR_GC4653 == info.SensorType)
-	{
-		pSensorDevice->MaxWidth = 2560;
-		pSensorDevice->MaxHeight = 1440;
-		pSensorDevice->MaxFPS = 30;
-		pSensorDevice->SenType = SEN_TYPE_GC4653;
-		pVideoInDevice->ViMode = TEST_VI_GC4653_MIPI_2560x1440_30FPS;
-		pCaptureDevice->MirrorAndflip = 1;
+	/* ========== Load configuration from product_config ========== */
+	const ProductConfig_t *product_cfg = ProductConfig_Get();
+	if (!product_cfg) {
+		PRINT_ERROR("MediaSetSystemInfor: Failed to get product configuration\n");
+		return;
 	}
-	else if (SENSOR_GC4023 == info.SensorType)
-	{
-		pSensorDevice->MaxWidth = 2560;
-		pSensorDevice->MaxHeight = 1440;
-		pSensorDevice->MaxFPS = 30;
-		pSensorDevice->SenType = SEN_TYPE_GC4023;
-		pVideoInDevice->ViMode = TEST_VI_GC4023_MIPI_2560x1440_30FPS;
-		pCaptureDevice->MirrorAndflip = 0;
-	}
-	else if (SENSOR_0S04L10 == info.SensorType)
-	{
-		pSensorDevice->MaxWidth = 2560;
-		pSensorDevice->MaxHeight = 1440;
-		pSensorDevice->MaxFPS = 30;
-		pSensorDevice->SenType = SEN_TYPE_OS04L10;
-		pVideoInDevice->ViMode = TEST_VI_OS04L10_MIPI_2560x1440_30FPS;
-		pCaptureDevice->MirrorAndflip = 0;
-	}
-	else if (SENSOR_0S04D10 == info.SensorType)
-	{
-		pSensorDevice->MaxWidth = 2560;
-		pSensorDevice->MaxHeight = 1440;
-		pSensorDevice->MaxFPS = 30;
-		pSensorDevice->SenType = SEN_TYPE_OS04D10;
-		pVideoInDevice->ViMode = TEST_VI_OS04D10_MIPI_2560x1440_30FPS;
-		pCaptureDevice->MirrorAndflip = 0;
-	}
-	else if (SENSOR_GC2083 == info.SensorType)
-	{
-		pSensorDevice->MaxWidth = 1920;
-		pSensorDevice->MaxHeight = 1080;
-		pSensorDevice->MaxFPS = 30;
-		pSensorDevice->SenType = SEN_TYPE_GC2083;
-		pVideoInDevice->ViMode = TEST_VI_GC2083_MIPI_1080P_30FPS;
-		pCaptureDevice->MirrorAndflip = 0;
-	}
-	else if ((SENSOR_SC3335 == info.SensorType) ||
-			 (SENSOR_SC3336 == info.SensorType))
-	{
-		pSensorDevice->MaxWidth = 2304;
-		pSensorDevice->MaxHeight = 1296;
-		pSensorDevice->MaxFPS = 30;
-		//pSensorDevice->ISP_Format = FORMAT_2304X1296P30;
-		pCaptureDevice->MirrorAndflip = 0;
-	}
-	else
-	{
-		PRINT_ERROR("MediaSetSystemInfor: Sensor(%d) is not support!\n", pSensorDevice->SenType);
+
+	/* Override with product configuration values */
+	info.SensorType = product_cfg->sensor_type;
+	info.Main_MaxWidth = product_cfg->main_max_width;
+	info.Main_MaxHeight = product_cfg->main_max_height;
+	info.Sub_MaxWidth = product_cfg->sub_max_width;
+	info.Sub_MaxHeight = product_cfg->sub_max_height;
+
+	PRINT_INFO("Product config: sensor=%d, main=%dx%d, sub=%dx%d\n",
+		info.SensorType, info.Main_MaxWidth, info.Main_MaxHeight,
+		info.Sub_MaxWidth, info.Sub_MaxHeight);
+
+	/* ========== Use sensor_config module for table-driven lookup ========== */
+	const SensorConfig_t *sensor_cfg = SensorConfig_Get(info.SensorType);
+	if (sensor_cfg == NULL) {
+		PRINT_ERROR("MediaSetSystemInfor: Sensor(%d) is not supported!\n", info.SensorType);
 		assert(0);
+		return;
 	}
 
-	printf("Sensor : name = %d, MaxWidth = %d, MaxHeight = %d, MaxFPS = %d\n",
-			pSensorDevice->SenType,pSensorDevice->MaxWidth,pSensorDevice->MaxHeight,pSensorDevice->MaxFPS);
+	/* Apply sensor configuration */
+	pSensorDevice->MaxWidth = sensor_cfg->max_width;
+	pSensorDevice->MaxHeight = sensor_cfg->max_height;
+	pSensorDevice->MaxFPS = sensor_cfg->max_fps;
+	pSensorDevice->SenType = sensor_cfg->sen_type;
+	pVideoInDevice->ViMode = sensor_cfg->vi_mode;
+	pCaptureDevice->MirrorAndflip = sensor_cfg->mirror_and_flip;
+
+	printf("Sensor : name = %s, MaxWidth = %d, MaxHeight = %d, MaxFPS = %d\n",
+			sensor_cfg->name, pSensorDevice->MaxWidth, pSensorDevice->MaxHeight, pSensorDevice->MaxFPS);
 
 	pVideoInDevice->videoInChannel = 1;
 	pVideoInDevice->VDInfo[0].ViDstFps = pSensorDevice->MaxFPS;
 	pVideoInDevice->vi_pic.u32Width = pSensorDevice->MaxWidth;
 	pVideoInDevice->vi_pic.u32Height = pSensorDevice->MaxHeight;
 	//pVideoInDevice->isp_setformat = pSensorDevice->ISP_Format;
-	
 
-	pCaptureDevice->Rotate = Mode_Rotate_0;
+
+	/* Apply rotation mode from product config */
+	switch (product_cfg->rotation_mode) {
+		case 0:  pCaptureDevice->Rotate = Mode_Rotate_0; break;
+		case 1:  pCaptureDevice->Rotate = Mode_Rotate_90; break;
+		case 2:  pCaptureDevice->Rotate = Mode_Rotate_180; break;
+		case 3:  pCaptureDevice->Rotate = Mode_Rotate_270; break;
+		default:
+			PRINT_WARN("Invalid rotation_mode=%d, using 0°\n", product_cfg->rotation_mode);
+			pCaptureDevice->Rotate = Mode_Rotate_0;
+			break;
+	}
+	PRINT_INFO("Rotation mode: %d\n", product_cfg->rotation_mode);
+
 	pCaptureDevice->EncCount = pVideoInDevice->videoInChannel;
 	for (i = 0; i < pCaptureDevice->EncCount; i++)
 	{
@@ -524,8 +437,13 @@ void MediaHardWareInit(int Normal)
 {
 	PRINT_TRACE("Normal  =%d\n",Normal);
 
-	// ProductType_e Type;
-	// Type = SystemGetProductType();
+	/* ========== Initialize product configuration FIRST ========== */
+	/* This must be done before any hardware operations that depend on config */
+	if (ProductConfig_Init() != 0) {
+		PRINT_WARN("ProductConfig_Init failed, using built-in defaults\n");
+		// Continue with defaults - not fatal
+	}
+
 	DeviceHalInit();
 
 	if (gpio_init(LED_SELECT) != HI_SUCCESS)
@@ -629,71 +547,4 @@ void MediaHardWareInit(int Normal)
 	}
 
 }
-
-
-int write_ring_buff(RING_BUFF *ring_buf, unsigned char *input_data, unsigned int len)
-{
-	unsigned int t_w = 0;
-
-	if (len > ring_buf->tatol_len || 0 == len || NULL == ring_buf->buf)
-	{
-		PRINT_ERROR("write_ring_buff error tatol_len = %d len = %d\n",ring_buf->tatol_len,len);
-		return -1;
-	}
-
-	if (ring_buf->tail == ring_buf->head)
-	{
-		ring_buf->tail = 0;
-		ring_buf->head = 0;
-	}
-
-	t_w = ring_buf->tail & (ring_buf->tatol_len - 1);
-
-	if (len <= (ring_buf->tatol_len - t_w))
-	{
-		memcpy(ring_buf->buf + t_w, input_data, len);
-	}
-	else
-	{
-		memcpy(ring_buf->buf + t_w, input_data, (ring_buf->tatol_len - t_w));
-		memcpy(ring_buf->buf, input_data + (ring_buf->tatol_len - t_w), len - (ring_buf->tatol_len - t_w));
-	}
-
-	ring_buf->tail += len;
-
-	return 0;
-}
-
-int read_ring_buff(RING_BUFF *ring_buf, unsigned char *output_data, unsigned int len)
-{
-	//unsigned int t_w = 0;
-	unsigned int t_r = 0;
-	unsigned int cur_w = 0;
-	unsigned int datalen = 0;
-	cur_w = ring_buf->tail;
-	datalen = cur_w - ring_buf->head;
-
-	//空了或小于
-	if (len > ring_buf->tatol_len || 0 == datalen || datalen < len || 0 == len || NULL == ring_buf->buf)
-	{
-		return -1;
-	}
-
-	//索引在数组的位置
-	//t_w = cur_w & (ring_buf->tatol_len - 1);
-	t_r = ring_buf->head & (ring_buf->tatol_len - 1);
-
-	if (len <= (ring_buf->tatol_len - t_r))
-	{
-		memcpy(output_data, ring_buf->buf + t_r, len);
-	}
-	else
-	{
-		memcpy(output_data, ring_buf->buf + t_r, (ring_buf->tatol_len - t_r));
-		memcpy(output_data + (ring_buf->tatol_len - t_r), ring_buf->buf, len - (ring_buf->tatol_len - t_r));
-	}
-
-	ring_buf->head += len;
-
-	return 0;
-}
+
