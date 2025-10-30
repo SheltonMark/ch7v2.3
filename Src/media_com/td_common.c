@@ -495,12 +495,6 @@ void MediaHardWareInit(int Normal)
 		return;
 	}
 
-	/* Initialize OSD after pipeline, before capture */
-	if(VideoOSD_Init() != HI_SUCCESS)
-	{
-		PRINT_WARN("videoOSD_Init failed (non-fatal)\n");
-	}
-
 	if(AudioInCreate(CHL_MAIN_T) != HI_SUCCESS)
 	{
 		PRINT_ERROR("AudioCreate failed\n");
@@ -544,6 +538,11 @@ void MediaHardWareInit(int Normal)
 	if (capture_init() != HI_SUCCESS)
 	{
 		PRINT_TRACE("video_venc_start failed\n");
+	}
+
+	if(VideoOSD_Init() != HI_SUCCESS)
+	{
+		PRINT_WARN("videoOSD_Init failed (non-fatal)\n");
 	}
 
 }

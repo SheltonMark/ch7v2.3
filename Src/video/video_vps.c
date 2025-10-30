@@ -494,6 +494,16 @@ int VideoVPS_SetOutputParam(int channel, DWORD dwType, VPS_CHN_OUT_ATTR *ChnAttr
         return ret;
     }
 
+    /* Debug: Print GetChnAttr result */
+    /*PRINT_INFO("[VPS_DEBUG] Before modify - enAttrType=%d, OutWidth=%d, OutHeight=%d\n",
+               VPS_ChnAttr.enAttrType, VPS_ChnAttr.u32OutWidth, VPS_ChnAttr.u32OutHeight);
+    PRINT_INFO("[VPS_DEBUG] Before modify - EncAttr: YStride=%d, CStride=%d, enType=%d, OutFps=%d\n",
+               VPS_ChnAttr.stEncAttr.u32YStride, VPS_ChnAttr.stEncAttr.u32CStride,
+               VPS_ChnAttr.stEncAttr.enType, VPS_ChnAttr.stEncAttr.u32OutFps);
+    PRINT_INFO("[VPS_DEBUG] Before modify - EncAttr: enWorkMode=%d, OfflineBufNum=%d, bCompress=%d, enOutFormat=%d\n",
+               VPS_ChnAttr.stEncAttr.enWorkMode, VPS_ChnAttr.stEncAttr.u32OfflineBufNum,
+               VPS_ChnAttr.stEncAttr.bCompress, VPS_ChnAttr.stEncAttr.enOutFormat);*/
+
     /* Step 4: Update channel attributes */
     VPS_ChnAttr.u32OutHeight = ChnAttr->OutHeight;
     VPS_ChnAttr.u32OutWidth = ChnAttr->OutWidth;
@@ -525,5 +535,6 @@ int VideoVPS_SetOutputParam(int channel, DWORD dwType, VPS_CHN_OUT_ATTR *ChnAttr
 
     return ret;
 }
+
 
 

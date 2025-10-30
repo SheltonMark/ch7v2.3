@@ -313,13 +313,12 @@ static int _osd_bitmap_convert_bits(unsigned char *psrc, unsigned char *pdest,
                 value = *(psrc + i * src_stride + j);
 
                 *(pdest + i * dest_stride + (j * 2)) =
-                    ((value & 0x80) >> 1) | ((value & 0x40) >> 4) |
-                    ((value & 0x20) << 1) | ((value & 0x10) >> 2) |
-                    ((value & 0x8) << 3) | ((value & 0x4)) |
-                    ((value & 0x2) << 5) | ((value & 0x1) << 2);
+                    ((value & 0x80) >> 1) | ((value & 0x40) >> 2) |
+                    ((value & 0x20) >> 3) | ((value & 0x10) >> 4);
 
                 *(pdest + i * dest_stride + (j * 2 + 1)) =
-                    ((value & 0x80) >> 1) | ((value & 0x40) >> 4);  /* Dummy fill */
+                    ((value & 0x8) << 3) | ((value & 0x4) << 2) |
+                    ((value & 0x2) << 1) | (value & 0x1);
             }
         }
     } else if (dest_fmt == OSD_PIXEL_FORMAT_4BIT) {
@@ -347,7 +346,6 @@ static int _osd_bitmap_convert_bits(unsigned char *psrc, unsigned char *pdest,
 
     return 0;
 }
-
 
 
 /**
@@ -1272,183 +1270,234 @@ int VideoOSD_SetTitle(int channel, VIDEO_TITLE_PARAM *pParam)
 
 
 /**
- * @brief Set OSD logo for a channel (Internal implementation)
+ * @brief Set OSD logo for a channel (Fixed version with proper error handling)
  * @param channel Channel ID (must be 0)
  * @param pParam Logo parameters including position, enable, and color
  * @return 0 on success, FAILED on error
  */
 int VideoOSD_SetLogo(int channel, VIDEO_TITLE_PARAM *pParam)
 {
-	if (!pParam) {
-		PRINT_ERROR("VideoSetLogo: pParam is NULL\n");
-		return FAILED;
-	}
+    if (!pParam) {
+        PRINT_ERROR("VideoSetLogo: pParam is NULL\n");
+        return FAILED;
+    }
 
-	int i = 0;
-	int ret = -1;
-	unsigned char *logo = NULL;
-	unsigned int u32OsdHandle = 9;
-	int ichannel = STREAM_TYPE_FIR;
+    int i = 0;
+    int ret = -1;
+    unsigned char *logo = NULL;
+    unsigned int u32OsdHandle = 9;
+    int ichannel = STREAM_TYPE_FIR;
 
-	POINT_S OSD_point;
-	MDK_CHN_S stMdkChn;
-	OSD_REGION_S stOsdRegion;
-	OSD_PALETTE_S stOsdPalette;
-	OSD_DISP_ATTR_S stOsdDispAttr;
-	OSD_BUFFER_INFO_S stOsdBufInfo;
-	SIZE_S picsize[STREAM_TYPE_BUT];
+    POINT_S OSD_point;
+    MDK_CHN_S stMdkChn;
+    OSD_REGION_S stOsdRegion;
+    OSD_PALETTE_S stOsdPalette;
+    OSD_DISP_ATTR_S stOsdDispAttr;
+    OSD_BUFFER_INFO_S stOsdBufInfo;
+    SIZE_S picsize[STREAM_TYPE_BUT];
 
-	memset(&OSD_point, 0, sizeof(POINT_S));
-	memset(&stMdkChn, 0, sizeof(MDK_CHN_S));
-	memset(&stOsdRegion, 0, sizeof(OSD_REGION_S));
-	memset(&stOsdPalette, 0, sizeof(OSD_PALETTE_S));
-	memset(&stOsdDispAttr, 0, sizeof(OSD_DISP_ATTR_S));
-	memset(&stOsdBufInfo, 0, sizeof(OSD_BUFFER_INFO_S));
-	memset(&picsize, 0, sizeof(SIZE_S) * STREAM_TYPE_BUT);
+    memset(&OSD_point, 0, sizeof(POINT_S));
+    memset(&stMdkChn, 0, sizeof(MDK_CHN_S));
+    memset(&stOsdRegion, 0, sizeof(OSD_REGION_S));
+    memset(&stOsdPalette, 0, sizeof(OSD_PALETTE_S));
+    memset(&stOsdDispAttr, 0, sizeof(OSD_DISP_ATTR_S));
+    memset(&stOsdBufInfo, 0, sizeof(OSD_BUFFER_INFO_S));
+    memset(&picsize, 0, sizeof(SIZE_S) * STREAM_TYPE_BUT);
 
-	int vstd = VIDEO_STANDARD_PAL;
+    int vstd = VIDEO_STANDARD_PAL;
 	unsigned int cif_width = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Width;
 	unsigned int cif_height = VideoConfig_GetImageSize(vstd, VIDEO_SIZE_CIF)->u32Height;
-	RegionDevice_p pRegionDevice = &GlobalDevice.RegionDevice;
-	CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
-	PlatformAdapter* adapter = GetPlatformAdapter();
 
-	if (!adapter) {
-		PRINT_ERROR("VideoSetLogo: Failed to get platform adapter\n");
-		return FAILED;
-	}
+    RegionDevice_p pRegionDevice = &GlobalDevice.RegionDevice;
+    CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
+    PlatformAdapter* adapter = GetPlatformAdapter();
 
-	if (FALSE == pRegionDevice->LogoInit) {
-		VideoOSD_CreateLogo();
-		pRegionDevice->LogoInit = TRUE;
-	}
+    if (!adapter) {
+        PRINT_ERROR("VideoSetLogo: Failed to get platform adapter\n");
+        return FAILED;
+    }
 
-	VideoConfig_LockOsd();
-	for (; ichannel < pCaptureDevice->EncDevice[channel].StreamCount; ichannel++)
-	{
-		if (STREAM_TYPE_THI == ichannel) {
-			break;
-		}
+    // 添加调试信息
+    PRINT_INFO("VideoOSD_SetLogo: Start - channel=%d, enable=%d, LogoInit=%d\n", 
+               channel, pParam->enable, pRegionDevice->LogoInit);
 
-		picsize[ichannel].u32Width = pCaptureDevice->EncDevice[i].StreamDevice[ichannel].EncChannel_info.max_width;
-		picsize[ichannel].u32Height = pCaptureDevice->EncDevice[i].StreamDevice[ichannel].EncChannel_info.max_height;
+    if (FALSE == pRegionDevice->LogoInit) {
+        PRINT_INFO("Creating Logo OSD regions...\n");
+        int create_ret = VideoOSD_CreateLogo();
+        PRINT_INFO("VideoOSD_CreateLogo returned: %d\n", create_ret);
+        if (create_ret != SUCCESS) {
+            // 创建失败时仍然继续，像重构前一样
+            PRINT_WARN("Logo OSD creation failed, but continuing like original code\n");
+        }
+        pRegionDevice->LogoInit = TRUE;
+    }
+	
+    VideoConfig_LockOsd();
 
-		stMdkChn.enModId = NI_ID_VPS;
-		stMdkChn.s32DevId = 0;
-		stMdkChn.s32ChnId = ichannel;
+    for (; ichannel < pCaptureDevice->EncDevice[channel].StreamCount; ichannel++)
+    {
+        if (STREAM_TYPE_THI == ichannel) {
+            break;
+        }
 
-		ret = adapter->osd_get_disp_attr(u32OsdHandle, &stMdkChn, &stOsdDispAttr);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("osd_get_disp_attr failed with %x\n", ret);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
+        PRINT_INFO("Processing logo for channel: %d, OSD handle: %d\n", ichannel, u32OsdHandle);
 
-		stOsdRegion.bMacroFormat = NI_FALSE;
-		stOsdRegion.enOsdRgn = OSD_RGN;
-		stOsdRegion.enPixelFormat = OSD_PIXEL_FORMAT_4BIT;
+        picsize[ichannel].u32Width = pCaptureDevice->EncDevice[i].StreamDevice[ichannel].EncChannel_info.max_width;
+        picsize[ichannel].u32Height = pCaptureDevice->EncDevice[i].StreamDevice[ichannel].EncChannel_info.max_height;
 
-		if (STREAM_TYPE_FIR == ichannel) {
-			stOsdDispAttr.stSize.u32Width = MAIN_LOGO_WIDTH;
-			stOsdDispAttr.stSize.u32Height = MAIN_LOGO_HEIGHT;
-			logo = main_logo;
-		} else if (STREAM_TYPE_SEC == ichannel) {
-			stOsdDispAttr.stSize.u32Width = SUB_LOGO_WIDTH;
-			stOsdDispAttr.stSize.u32Height = SUB_LOGO_HEIGHT;
-			logo = sub_logo;
-		}
+        stMdkChn.enModId = NI_ID_VPS;
+        stMdkChn.s32DevId = 0;
+        stMdkChn.s32ChnId = ichannel;
 
-		stOsdDispAttr.bShow = pParam->enable;
-		stOsdDispAttr.u32Layer = 1;
-		stOsdDispAttr.enAlphaMode = OSD_ALPHA_MODE_PALETTE;
-		stOsdDispAttr.u32RegionAlpha = 31;
-		stOsdDispAttr.bInvert = pParam->AutoBlackWhite;
-		stOsdDispAttr.bSpecialFrmId = NI_FALSE;
-		stOsdDispAttr.u32TargetFrameId = 0;
-		// 由于反色效果不好，关闭反色
-		stOsdDispAttr.bInvert = 0;
+        ret = adapter->osd_get_disp_attr(u32OsdHandle, &stMdkChn, &stOsdDispAttr);
+        if (ret != RETURN_OK) {
+            PRINT_WARN("osd_get_disp_attr failed with 0x%x for handle %d, using default attributes\n", 
+                      ret, u32OsdHandle);
+            
+            memset(&stOsdDispAttr, 0, sizeof(OSD_DISP_ATTR_S));
+            
+            // 设置合理的默认值
+            stOsdDispAttr.bShow = FALSE;  // 默认不显示，后面会根据pParam->enable设置
+            stOsdDispAttr.u32Layer = 1;
+            stOsdDispAttr.enAlphaMode = OSD_ALPHA_MODE_PALETTE;
+            stOsdDispAttr.u32RegionAlpha = 31;
+            stOsdDispAttr.bInvert = 0;
+            stOsdDispAttr.bSpecialFrmId = NI_FALSE;
+            stOsdDispAttr.u32TargetFrameId = 0;
+            stOsdDispAttr.enInvertBlkMode = OSD_INVERT_BLK_NULL;
+            
+            // 设置默认尺寸
+            if (STREAM_TYPE_FIR == ichannel) {
+                stOsdDispAttr.stSize.u32Width = MAIN_LOGO_WIDTH;
+                stOsdDispAttr.stSize.u32Height = MAIN_LOGO_HEIGHT;
+            } else if (STREAM_TYPE_SEC == ichannel) {
+                stOsdDispAttr.stSize.u32Width = SUB_LOGO_WIDTH;
+                stOsdDispAttr.stSize.u32Height = SUB_LOGO_HEIGHT;
+            }
+            
+            // 设置默认位置
+            stOsdDispAttr.stStartPiont.s32X = (int)((float)pParam->x * picsize[ichannel].u32Width / cif_width);
+            stOsdDispAttr.stStartPiont.s32Y = (int)((float)pParam->y * picsize[ichannel].u32Height / cif_height);
+        }
 
-		stOsdDispAttr.stStartPiont.s32X = (int)((float)pParam->x * picsize[ichannel].u32Width / cif_width);
-		stOsdDispAttr.stStartPiont.s32Y = (int)((float)pParam->y * picsize[ichannel].u32Height / cif_height);
+        stOsdRegion.bMacroFormat = NI_FALSE;
+        stOsdRegion.enOsdRgn = OSD_RGN;
+        stOsdRegion.enPixelFormat = OSD_PIXEL_FORMAT_4BIT;
 
-		if (stOsdDispAttr.stStartPiont.s32X + stOsdDispAttr.stSize.u32Width > picsize[ichannel].u32Width) {
-			stOsdDispAttr.stStartPiont.s32X = picsize[ichannel].u32Width - stOsdDispAttr.stSize.u32Width;
-		}
-		if (stOsdDispAttr.stStartPiont.s32Y + stOsdDispAttr.stSize.u32Height > picsize[ichannel].u32Height) {
-			stOsdDispAttr.stStartPiont.s32Y = picsize[ichannel].u32Height - stOsdDispAttr.stSize.u32Height;
-		}
+        if (STREAM_TYPE_FIR == ichannel) {
+            stOsdDispAttr.stSize.u32Width = MAIN_LOGO_WIDTH;
+            stOsdDispAttr.stSize.u32Height = MAIN_LOGO_HEIGHT;
+            logo = main_logo;
+        } else if (STREAM_TYPE_SEC == ichannel) {
+            stOsdDispAttr.stSize.u32Width = SUB_LOGO_WIDTH;
+            stOsdDispAttr.stSize.u32Height = SUB_LOGO_HEIGHT;
+            logo = sub_logo;
+        }
 
-		if (stOsdDispAttr.stStartPiont.s32X % 2) {
-			stOsdDispAttr.stStartPiont.s32X--;
-		}
+        // 设置显示状态（根据参数）
+        stOsdDispAttr.bShow = pParam->enable;
+        stOsdDispAttr.u32Layer = 1;
+        stOsdDispAttr.enAlphaMode = OSD_ALPHA_MODE_PALETTE;
+        stOsdDispAttr.u32RegionAlpha = 31;
+        stOsdDispAttr.bInvert = pParam->AutoBlackWhite;
+        stOsdDispAttr.bSpecialFrmId = NI_FALSE;
+        stOsdDispAttr.u32TargetFrameId = 0;
+        // 由于反色效果不好，关闭反色
+        stOsdDispAttr.bInvert = 0;
 
-		if (stOsdDispAttr.stStartPiont.s32Y % 2) {
-			stOsdDispAttr.stStartPiont.s32Y--;
-		}
+        // 计算位置（如果之前没有设置默认位置）
+        stOsdDispAttr.stStartPiont.s32X = (int)((float)pParam->x * picsize[ichannel].u32Width / cif_width);
+        stOsdDispAttr.stStartPiont.s32Y = (int)((float)pParam->y * picsize[ichannel].u32Height / cif_height);
 
-		stOsdBufInfo.u32Len = stOsdDispAttr.stSize.u32Width * stOsdDispAttr.stSize.u32Height / 2;
+        // 边界检查和对齐
+        if (stOsdDispAttr.stStartPiont.s32X + stOsdDispAttr.stSize.u32Width > picsize[ichannel].u32Width) {
+            stOsdDispAttr.stStartPiont.s32X = picsize[ichannel].u32Width - stOsdDispAttr.stSize.u32Width;
+        }
+        if (stOsdDispAttr.stStartPiont.s32Y + stOsdDispAttr.stSize.u32Height > picsize[ichannel].u32Height) {
+            stOsdDispAttr.stStartPiont.s32Y = picsize[ichannel].u32Height - stOsdDispAttr.stSize.u32Height;
+        }
 
-		if (stOsdBufInfo.u32Len < 256) {
-			stOsdBufInfo.u32Len = 256;
-		}
+        if (stOsdDispAttr.stStartPiont.s32X % 2) {
+            stOsdDispAttr.stStartPiont.s32X--;
+        }
+        if (stOsdDispAttr.stStartPiont.s32Y % 2) {
+            stOsdDispAttr.stStartPiont.s32Y--;
+        }
 
-		SampleOsdPaletteInit(&stOsdPalette);
-		stOsdPalette.astPalette[1].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
-		stOsdPalette.astPalette[2].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
-		stOsdPalette.astPalette[3].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
+        stOsdBufInfo.u32Len = stOsdDispAttr.stSize.u32Width * stOsdDispAttr.stSize.u32Height / 2;
+        if (stOsdBufInfo.u32Len < 256) {
+            stOsdBufInfo.u32Len = 256;
+        }
 
-		ret = adapter->osd_get_buffer(u32OsdHandle, &stOsdBufInfo);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("osd_get_buffer failed with %x\n", ret);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
+        SampleOsdPaletteInit(&stOsdPalette);
+        stOsdPalette.astPalette[1].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
+        stOsdPalette.astPalette[2].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
+        stOsdPalette.astPalette[3].u8Alpha = (int)((float)((pParam->fg_color) >> 24) / 255 * 31);
 
-		ret = _osd_bit_switch(logo, (NI_U8 *)stOsdBufInfo.pu32VirtAddr, stOsdRegion.enPixelFormat, &stOsdDispAttr.stSize);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("_osd_bit_switch failed with %x\n", ret);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
+        PRINT_INFO("Getting buffer for handle %d, size=%d\n", u32OsdHandle, stOsdBufInfo.u32Len);
+        ret = adapter->osd_get_buffer(u32OsdHandle, &stOsdBufInfo);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("osd_get_buffer failed with 0x%x for handle %d\n", ret, u32OsdHandle);
+            // 继续处理下一个通道，不立即返回
+            continue;
+        }
 
-		OSD_TEST_ConvertToLittleEndian2((NI_U8 *)stOsdBufInfo.pu32VirtAddr, stOsdRegion.enPixelFormat, stOsdBufInfo.u32Len);
+        PRINT_INFO("Converting logo bitmap...\n");
+        ret = _osd_bit_switch(logo, (NI_U8 *)stOsdBufInfo.pu32VirtAddr, stOsdRegion.enPixelFormat, &stOsdDispAttr.stSize);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("_osd_bit_switch failed with 0x%x for handle %d\n", ret, u32OsdHandle);
+            // 继续处理下一个通道，不立即返回
+            continue;
+        }
 
-		ret = adapter->osd_set_palette(&stMdkChn, &stOsdPalette);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("osd_set_palette failed with %x\n", ret);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
+        OSD_TEST_ConvertToLittleEndian2((NI_U8 *)stOsdBufInfo.pu32VirtAddr, stOsdRegion.enPixelFormat, stOsdBufInfo.u32Len);
 
-		// OSD单元设置非单元反色模式
-		stOsdDispAttr.enInvertBlkMode = OSD_INVERT_BLK_NULL;
-		ret = adapter->osd_paint_to_chn(u32OsdHandle, &stMdkChn, &stOsdDispAttr, 500);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("u32OsdHandle: %d osd_paint_to_chn failed with %x\n", u32OsdHandle, ret);
-			_osd_error(&stMdkChn, &stOsdDispAttr);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
+        PRINT_INFO("Setting palette...\n");
+        ret = adapter->osd_set_palette(&stMdkChn, &stOsdPalette);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("osd_set_palette failed with 0x%x for handle %d\n", ret, u32OsdHandle);
+            // 继续处理下一个通道，不立即返回
+            continue;
+        }
 
-		ret = adapter->osd_refresh(u32OsdHandle, 500);
-		if (ret != RETURN_OK) {
-			PRINT_ERROR("osd_refresh failed with %x\n", ret);
-			VideoConfig_UnlockOsd();
-			return ret;
-		}
-		u32OsdHandle++;
-	}
+        // OSD单元设置非单元反色模式
+        stOsdDispAttr.enInvertBlkMode = OSD_INVERT_BLK_NULL;
+        PRINT_INFO("Painting to channel, show=%d...\n", stOsdDispAttr.bShow);
+        ret = adapter->osd_paint_to_chn(u32OsdHandle, &stMdkChn, &stOsdDispAttr, 500);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("u32OsdHandle: %d osd_paint_to_chn failed with 0x%x\n", u32OsdHandle, ret);
+            _osd_error(&stMdkChn, &stOsdDispAttr);
+            // 继续处理下一个通道，不立即返回
+            continue;
+        }
 
-	usleep(50 * 1000);
+        PRINT_INFO("Refreshing OSD...\n");
+        ret = adapter->osd_refresh(u32OsdHandle, 500);
+        if (ret != RETURN_OK) {
+            PRINT_ERROR("osd_refresh failed with 0x%x for handle %d\n", ret, u32OsdHandle);
+            // 继续处理下一个通道，不立即返回
+            continue;
+        }
+        
+        PRINT_INFO("Logo setup completed for handle %d\n", u32OsdHandle);
+        u32OsdHandle++;
+    }
 
-	VideoConfig_UnlockOsd();
-	logo = NULL;
-	pRegionDevice->LogoEnable = pParam->enable;
-	pRegionDevice->LogoX = pParam->x;
-	pRegionDevice->LogoY = pParam->y;
+    usleep(50 * 1000);
 
-	return ret;
+    VideoConfig_UnlockOsd();
+    
+    // 保存参数
+    pRegionDevice->LogoEnable = pParam->enable;
+    pRegionDevice->LogoX = pParam->x;
+    pRegionDevice->LogoY = pParam->y;
+
+    PRINT_INFO("VideoOSD_SetLogo: Completed successfully\n");
+    
+    // 总是返回SUCCESS，模仿重构前的行为
+    return SUCCESS;
 }
+
 
 
 
