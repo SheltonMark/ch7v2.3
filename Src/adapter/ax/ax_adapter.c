@@ -379,7 +379,6 @@ static int AX_ISP_SetAutoFps(int IspDev, AISP_AFPS_CTRL_S* pstAFpsCtrl)
 static int AX_VI_Init(void)
 {
     NI_U32 u32Value;
-	const ProductConfig_t *product_cfg = ProductConfig_Get();
     NI_MDK_SYS_ReadReg(0x09050000, &u32Value);
     u32Value &= ~(1 << 6);
     NI_MDK_SYS_WriteReg(0x09050000, u32Value);

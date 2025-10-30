@@ -102,6 +102,12 @@ const CaptureImageQuality_t* VideoConfig_GetSubstreamQualityTable(void);
  */
 int VideoConfig_GetFontSize(int index);
 
+/**
+ * @brief Get font table size
+ * @return Size of font table in bytes
+ */
+int VideoConfig_GetFontTableSize(void);
+
 /* ========================================================================== */
 /*                       OSD Synchronization                                  */
 /* ========================================================================== */

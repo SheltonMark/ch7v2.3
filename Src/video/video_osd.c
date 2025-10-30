@@ -377,7 +377,7 @@ static int _osd_bitmap_add_edge(unsigned char *pbmp, int enlarge_factor, SIZE_S 
     memcpy(pbmp_temp, pbmp, size);
 
     /* Edge detection algorithm (2BIT format) */
-    int i, j, m, idx, xl, xr, yu, yd;
+    int i, j, m, xl, xr, yu, yd;
     unsigned char s, sum;
     int stride = psize->u32Width / 4;
 
@@ -565,7 +565,7 @@ static int _vsf_drv_enlarge_osd(unsigned char *psrc, unsigned char *pdest,
     }
 
     /* Step 2: Enlarge bitmap */
-    SIZE_S dest_size;
+    SIZE_S dest_size = {0};
     ret = _osd_bitmap_enlarge(temp_buf, pdest, fmt, enlarge_factor, psrc_size, &dest_size);
     if (ret != 0) {
         PRINT_ERROR("_osd_bitmap_enlarge failed\n");

@@ -435,7 +435,6 @@ int VideoVPS_SetOutputParam(int channel, DWORD dwType, VPS_CHN_OUT_ATTR *ChnAttr
     VPS_CHN_ATTR_S VPS_ChnAttr;
     CaptureDevice_p pCaptureDevice = &GlobalDevice.CaptureDevice;
     PlatformAdapter* adapter = GetPlatformAdapter();
-    extern unsigned int sensor_fps;
 
     if (!adapter) {
         PRINT_ERROR("VideoVPS_SetOutputParam: Platform adapter not initialized\n");

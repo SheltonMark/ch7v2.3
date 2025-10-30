@@ -23,6 +23,7 @@
 #include "video_vps.h"
 #include "video_osd.h"
 #include "video_config.h"
+#include "video_input.h"
 #include "platform_adapter.h"
 #include "PrintGrade.h"
 

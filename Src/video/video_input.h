@@ -28,6 +28,14 @@ extern "C" {
 int VideoInput_SetMirrorAndFlip(int channel, int mirror, int flip);
 
 /**
+ * @brief 设置视频制式
+ * @param channel 通道号
+ * @param dwStandard 视频制式 PAL/NTSC
+ * @return VI_SUCCESS 成功, VI_FAILURE 失败
+ */
+int VideoInput_SetVstd(int channel, DWORD dwStandard);
+
+/**
  * @brief 处理输入格式变化（ISP 帧率同步）
  *
  * 当通道分辨率或帧率变化时，需要同时更新 ISP、VPS 和 Sensor 的帧率设置。

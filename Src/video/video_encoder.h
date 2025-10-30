@@ -28,6 +28,7 @@ extern "C" {
 typedef unsigned int DWORD;
 #endif
 typedef struct channel_info channel_info;
+typedef struct VIDEO_FORMAT VIDEO_FORMAT;
 
 /* ========================================================================== */
 /*                           宏和类型定义区                                   */
@@ -76,6 +77,17 @@ int VideoEncoder_Start(int VencChn);
  * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
  */
 int VideoEncoder_Stop(int VencChn);
+
+/**
+ * @brief 设置编码通道格式（分辨率、帧率、编码类型等）
+ * @param channel 视频输入通道
+ * @param dwType 码流类型 (CHL_MAIN_T/CHL_2END_T/CHL_JPEG_T)
+ * @param pFormat 视频格式参数（分辨率、帧率、码率、编码类型等）
+ * @return VENC_SUCCESS 成功, VENC_FAILURE 失败
+ * @note  协调VPS和VENC的配置变更
+ *       内部流程：Stop → SetVPS → UpdateVENC → Start
+ */
+int VideoEncoder_SetFormat(int channel, DWORD dwType, VIDEO_FORMAT *pFormat);
 
 /*
  * ===== 动态参数设置（可被adaptive模块复用） =====

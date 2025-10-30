@@ -39,8 +39,6 @@ SRCS +=$(wildcard $(SRCDIR)/Src/adapter/*.c)
 SRCS +=$(wildcard $(SRCDIR)/Src/adapter/ax/*.c)
 SRCS +=$(wildcard $(SRCDIR)/Src/utils/*.c)
 SRCS +=$(wildcard $(SRCDIR)/Src/config/*.c)
-SRCS +=$(wildcard $(SRCDIR)/Src/video/core/*.c)
-SRCS +=$(wildcard $(SRCDIR)/Src/video/modules/*.c)
 
 OBJS	= $(SRCS:%.c=%.o)
 

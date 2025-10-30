@@ -81,7 +81,7 @@ ifeq ($(cpu), AX520CE)
 	CFLAGS  += -I$(TOPDIR)/Src/sdk_common/
 	CFLAGS  += -I$(TOPDIR)/Src/utils/          # 工具类头文件（ring_buffer.h 等）
 	CFLAGS  += -I$(TOPDIR)/Src/config/         # 配置模块头文件（product_config.h 等）
-	CFLAGS  += -I$(TOPDIR)/Src/video/          # 视频模块头文件（已扁平化）
+	CFLAGS  += -I$(TOPDIR)/Src/video/          # 视频模块头文件
 	CFLAGS  += -I$(TOPDIR)/Src/adapter/include/ # 平台适配器头文件
 	CFLAGS  += -DPLATFORM_AX
 	CFLAGS  +=	-march=armv7-a -mfpu=neon -mfloat-abi=hard

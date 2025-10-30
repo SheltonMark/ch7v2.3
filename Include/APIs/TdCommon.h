@@ -173,8 +173,7 @@ void MediaHardWareInit(int Normal);
 /* New adapter-based video pipeline */
 int VideoPipeline_Init(void);
 int VideoOSD_Init(void);
-int VideoOverlay_UpdateTimestamp(int VpsGrp, int VpsChn, const char* timestamp);
-int VideoOverlay_UpdateCustomText(int VpsGrp, int VpsChn, const char* text, int x, int y);
+
 
 #endif
 

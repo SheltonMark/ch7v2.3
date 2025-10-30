@@ -115,7 +115,7 @@ int VideoFrameRate_HandleSensorChange(int channel, unsigned int new_sensor_fps)
         info.qt_level = pCaptureDevice->EncDevice[channel].StreamDevice[ichannel].EncChannel_info.qt_level;
         info.enc_type = pCaptureDevice->EncDevice[channel].StreamDevice[ichannel].EncChannel_info.enc_type;
 
-        // Update VENC parameters (without osd_lock - caller should handle)
+        // Update VENC parameters
         ret = VideoEncoder_UpdateChannelConfig(channel, ichannel, &info);
         if (ret != RETURN_OK) {
             PRINT_ERROR("Error(%x): VideoEncoder_UpdateChannelConfig channel %d failed\n", ret, ichannel);

@@ -2,7 +2,7 @@
 //主要封装一些不属于独立功能模块的接口，对应的声明请放在MediaCom.h内
 #include "TdCommon.h"
 #include "toolconfig.h"
-//#include "../../video/modules/include/video_osd.h"
+#include "video_osd.h"
 
 static pthread_t g_pid = 0;
 static DWORD g_flag = 0;
